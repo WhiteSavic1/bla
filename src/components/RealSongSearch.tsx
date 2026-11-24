@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Search, Music, Loader2 } from "lucide-react";
 import { TrackInfo } from "@/types/persona";
+import { extractSpotifyTrackId, extractYouTubeId } from "@/lib/constants";
 
 export function RealSongSearch({
   onSelect,
@@ -52,6 +53,76 @@ export function RealSongSearch({
     setLoading(true);
     setSearched(true);
     try {
+      const ytId = extractYouTubeId(q);
+      if (ytId) {
+        let title = "YouTube Şarkısı";
+        let artist: string | undefined;
+        let artworkUrl = `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
+        try {
+          const oe = await fetch(
+            `https://www.youtube.com/oembed?url=${encodeURIComponent(
+              `https://www.youtube.com/watch?v=${ytId}`
+            )}&format=json`
+          );
+          if (oe.ok) {
+            const meta = (await oe.json()) as {
+              title?: string;
+              author_name?: string;
+              thumbnail_url?: string;
+            };
+            if (meta.title) title = meta.title;
+            if (meta.author_name) artist = meta.author_name;
+            if (meta.thumbnail_url) artworkUrl = meta.thumbnail_url;
+          }
+        } catch {
+          // fallback metadata
+        }
+        onSelect({
+          id: `yt_${ytId}_${Date.now()}`,
+          title,
+          artist,
+          provider: "YOUTUBE",
+          url: `https://www.youtube.com/watch?v=${ytId}`,
+          artworkUrl,
+        });
+        setQuery("");
+        setResults([]);
+        setSearched(false);
+        return;
+      }
+
+      const spId = extractSpotifyTrackId(q);
+      if (spId) {
+        let title = "Spotify Şarkısı";
+        let artworkUrl: string | undefined;
+        try {
+          const oe = await fetch(
+            `https://open.spotify.com/oembed?url=${encodeURIComponent(
+              `https://open.spotify.com/track/${spId}`
+            )}`
+          );
+          if (oe.ok) {
+            const meta = (await oe.json()) as {
+              title?: string;
+              thumbnail_url?: string;
+            };
+            if (meta.title) title = meta.title;
+            if (meta.thumbnail_url) artworkUrl = meta.thumbnail_url;
+          }
+        } catch {
+          // fallback metadata
+        }
+        await handleSelectTrack({
+          id: `sp_${spId}_${Date.now()}`,
+          title,
+          provider: "SPOTIFY",
+          url: `https://open.spotify.com/track/${spId}`,
+          artworkUrl,
+        });
+        setQuery("");
+        return;
+      }
+
       const res = await fetch(`/api/music-search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       setResults(data.results || []);
