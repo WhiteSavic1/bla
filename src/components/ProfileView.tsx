@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Volume2,
   VolumeX,
@@ -35,8 +35,6 @@ export function ProfileView() {
     activeProfileAudio,
     toggleMuteProfileAudio,
     replayProfileAudio,
-    volume,
-    setVolume,
     playGlobalTrack,
     setActiveSection,
     publishDraft,
@@ -56,13 +54,29 @@ export function ProfileView() {
 
   const profileAudioRef = useRef<HTMLAudioElement | null>(null);
   const profileYoutubeRef = useRef<HTMLIFrameElement | null>(null);
+  const [profileVolume, setProfileVolume] = useState<number>(() => {
+    if (typeof window === "undefined") return 50;
+    const saved = Number(localStorage.getItem("satir_arasi_profile_volume"));
+    return Number.isFinite(saved) && saved >= 0 && saved <= 100 ? saved : 50;
+  });
+  const handleProfileVolumeChange = (next: number) => {
+    const clamped = Math.max(0, Math.min(100, next));
+    setProfileVolume(clamped);
+    try {
+      localStorage.setItem("satir_arasi_profile_volume", String(clamped));
+    } catch {
+      // ignore
+    }
+  };
+  const toYtVol = (v: number) =>
+    v <= 0 ? 0 : Math.max(1, Math.round(Math.pow(v / 100, 1.8) * 100));
   const user =
     users.find((u) => u.id === viewedProfileId) || currentUser;
 
   useEffect(() => {
     const el = profileAudioRef.current;
     if (el) {
-      el.volume = Math.max(0, Math.min(1, volume / 100));
+      el.volume = Math.pow(Math.max(0, Math.min(100, profileVolume)) / 100, 2);
       if (
         activeProfileAudio &&
         activeProfileAudio.userId === user.id &&
@@ -77,7 +91,11 @@ export function ProfileView() {
     }
     if (profileYoutubeRef.current?.contentWindow) {
       profileYoutubeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [volume] }),
+        JSON.stringify({
+          event: "command",
+          func: "setVolume",
+          args: [toYtVol(profileVolume)],
+        }),
         "*"
       );
     }
@@ -87,7 +105,7 @@ export function ProfileView() {
     activeProfileAudio?.isMuted,
     user.id,
     user.profileAudio?.previewUrl,
-    volume,
+    profileVolume,
   ]);
   const isOwnProfile = user.id === currentUser.id;
   const userPosts = posts.filter(
@@ -280,12 +298,12 @@ export function ProfileView() {
                 type="range"
                 min={0}
                 max={100}
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
+                value={profileVolume}
+                onChange={(e) => handleProfileVolumeChange(Number(e.target.value))}
                 className="h-1.5 flex-1 accent-emerald-400 cursor-pointer"
               />
               <span className="w-8 text-right text-[11px] text-emerald-200/80">
-                {volume}%
+                {profileVolume}%
               </span>
             </div>
 
@@ -314,7 +332,7 @@ export function ProfileView() {
                         JSON.stringify({
                           event: "command",
                           func: "setVolume",
-                          args: [volume],
+                          args: [toYtVol(profileVolume)],
                         }),
                         "*"
                       );

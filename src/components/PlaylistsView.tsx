@@ -10,6 +10,9 @@ import {
   Send,
   Trash2,
   Music,
+  ListOrdered,
+  Shuffle,
+  MousePointerClick,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { TrackInfo } from "@/types/persona";
@@ -32,6 +35,8 @@ export function PlaylistsView() {
     sharePlaylistToChat,
     playGlobalTrack,
     playGlobalPlaylist,
+    globalPlayMode,
+    setGlobalPlayMode,
     openProfile,
     requestConfirm,
     showToast,
@@ -352,14 +357,49 @@ export function PlaylistsView() {
 
                 <div className="flex flex-wrap items-center gap-2">
                   {pl.tracks.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => playGlobalPlaylist(pl.tracks, 0)}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-emerald-400 transition"
-                    >
-                      <Play className="h-3.5 w-3.5 fill-current" />
-                      <span>Listeyi Dinle</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => playGlobalPlaylist(pl.tracks, 0, "SEQUENTIAL")}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                          globalPlayMode === "SEQUENTIAL"
+                            ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                            : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                        }`}
+                      >
+                        <ListOrdered className="h-3.5 w-3.5" />
+                        <span>Sırayla Çal</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => playGlobalPlaylist(pl.tracks, 0, "SHUFFLE")}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                          globalPlayMode === "SHUFFLE"
+                            ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                            : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                        }`}
+                      >
+                        <Shuffle className="h-3.5 w-3.5" />
+                        <span>Karışık Çal</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGlobalPlayMode("MANUAL");
+                          showToast(
+                            "Manuel seçim modu aktif: Aşağıdan istediğin şarkıya basarak sırayla seçebilirsin."
+                          );
+                        }}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                          globalPlayMode === "MANUAL"
+                            ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                            : "bg-white/10 text-gray-200 hover:bg-white/15"
+                        }`}
+                      >
+                        <MousePointerClick className="h-3.5 w-3.5" />
+                        <span>Manuel Seç</span>
+                      </button>
+                    </>
                   )}
 
                   <button

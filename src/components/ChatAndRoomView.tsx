@@ -26,6 +26,9 @@ import {
   ArrowUp,
   ArrowDown,
   Phone,
+  ListOrdered,
+  Shuffle,
+  MousePointerClick,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import {
@@ -90,6 +93,8 @@ export function ChatAndRoomView() {
     addToRoomQueue,
     prevRoomTrack,
     skipRoomTrack,
+    roomPlayMode,
+    setRoomPlayMode,
     playlists,
     volume,
     setVolume,
@@ -1790,7 +1795,7 @@ export function ChatAndRoomView() {
                   )}
                 </button>
                 <button
-                  onClick={skipRoomTrack}
+                  onClick={() => skipRoomTrack(false)}
                   title="Sonraki Şarkı"
                   className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20"
                 >
@@ -1956,6 +1961,48 @@ export function ChatAndRoomView() {
                     );
                   })()}
                 </div>
+              </div>
+            )}
+
+            {/* Çalma Modu: Sırayla / Karışık / Manuel */}
+            {isJoinedRoom && (
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-[#0F1115]/80 p-1">
+                <button
+                  type="button"
+                  onClick={() => setRoomPlayMode("SEQUENTIAL")}
+                  className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition ${
+                    roomPlayMode === "SEQUENTIAL"
+                      ? "bg-emerald-500 text-black font-semibold"
+                      : "text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  <ListOrdered className="h-3.5 w-3.5" />
+                  <span>Sırayla</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomPlayMode("SHUFFLE")}
+                  className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition ${
+                    roomPlayMode === "SHUFFLE"
+                      ? "bg-emerald-500 text-black font-semibold"
+                      : "text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  <Shuffle className="h-3.5 w-3.5" />
+                  <span>Karışık</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomPlayMode("MANUAL")}
+                  className={`flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-medium transition ${
+                    roomPlayMode === "MANUAL"
+                      ? "bg-emerald-500 text-black font-semibold"
+                      : "text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  <MousePointerClick className="h-3.5 w-3.5" />
+                  <span>Manuel</span>
+                </button>
               </div>
             )}
 

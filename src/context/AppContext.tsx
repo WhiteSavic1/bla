@@ -38,6 +38,8 @@ import {
 import { audioEngine } from "@/lib/audioEngine";
 import { extractSpotifyTrackId, extractYouTubeId } from "@/lib/constants";
 
+export type PlaybackMode = "SEQUENTIAL" | "SHUFFLE" | "MANUAL";
+
 interface AppContextValue {
   // Navigation & UI
   activeSection: ActiveSection;
@@ -221,10 +223,16 @@ interface AppContextValue {
   isGlobalPlaying: boolean;
   isLooping: boolean;
   toggleLoop: () => void;
+  globalPlayMode: PlaybackMode;
+  setGlobalPlayMode: (mode: PlaybackMode) => void;
   volume: number;
   setVolume: (v: number) => void;
   playGlobalTrack: (track: TrackInfo, queue?: TrackInfo[]) => void;
-  playGlobalPlaylist: (tracks: TrackInfo[], startIndex?: number) => void;
+  playGlobalPlaylist: (
+    tracks: TrackInfo[],
+    startIndex?: number,
+    mode?: PlaybackMode
+  ) => void;
   nextGlobalTrack: (autoAdvance?: boolean) => void;
   prevGlobalTrack: () => void;
   toggleGlobalPlay: () => void;
@@ -299,7 +307,9 @@ interface AppContextValue {
   toggleCollaborativeQueue: () => void;
   addToRoomQueue: (track: TrackInfo) => void;
   prevRoomTrack: () => void;
-  skipRoomTrack: () => void;
+  skipRoomTrack: (autoAdvance?: boolean) => void;
+  roomPlayMode: PlaybackMode;
+  setRoomPlayMode: (mode: PlaybackMode) => void;
 
   // Toast feedback
   toastMessage: string | null;
@@ -445,6 +455,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [globalQueueIndex, setGlobalQueueIndex] = useState<number>(-1);
   const [isGlobalPlaying, setIsGlobalPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [globalPlayMode, setGlobalPlayMode] = useState<PlaybackMode>("SEQUENTIAL");
+  const [roomPlayMode, setRoomPlayMode] = useState<PlaybackMode>("SEQUENTIAL");
   const [volume, setVolumeState] = useState<number>(75);
 
   const toggleLoop = () => {
@@ -2815,9 +2827,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     startGlobalTrackDirect(track);
   };
 
-  const playGlobalPlaylist = (tracks: TrackInfo[], startIndex = 0) => {
+  const playGlobalPlaylist = (
+    tracks: TrackInfo[],
+    startIndex = 0,
+    mode?: PlaybackMode
+  ) => {
     if (!tracks || tracks.length === 0) return;
-    const safeIdx = Math.max(0, Math.min(tracks.length - 1, startIndex));
+    if (mode) setGlobalPlayMode(mode);
+    const activeMode = mode || globalPlayMode;
+    const safeIdx =
+      activeMode === "SHUFFLE" && startIndex === 0 && tracks.length > 1
+        ? Math.floor(Math.random() * tracks.length)
+        : Math.max(0, Math.min(tracks.length - 1, startIndex));
     setGlobalQueue(tracks);
     setGlobalQueueIndex(safeIdx);
     startGlobalTrackDirect(tracks[safeIdx]);
@@ -2834,6 +2855,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const nextGlobalTrack = (autoAdvance = false) => {
     if (globalQueue.length === 0) {
       stopGlobalTrack();
+      return;
+    }
+    if (autoAdvance && globalPlayMode === "MANUAL" && !isLooping) {
+      audioEngine.stop();
+      setIsGlobalPlaying(false);
+      return;
+    }
+    if (globalPlayMode === "SHUFFLE" && globalQueue.length > 1) {
+      let randIdx = Math.floor(Math.random() * globalQueue.length);
+      if (randIdx === globalQueueIndex) {
+        randIdx = (randIdx + 1) % globalQueue.length;
+      }
+      setGlobalQueueIndex(randIdx);
+      startGlobalTrackDirect(globalQueue[randIdx]);
       return;
     }
     const nextIdx = globalQueueIndex + 1;
@@ -3637,10 +3672,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, true);
   };
 
-  const skipRoomTrack = () => {
+  const skipRoomTrack = (autoAdvance = false) => {
     updateRoomAndSync((prev) => {
-      if (prev.queue.length === 0) return prev;
-      const [nextTrack, ...rest] = prev.queue;
+      if (prev.queue.length === 0) {
+        if (autoAdvance) {
+          audioEngine.stop();
+          return { ...prev, isPlaying: false };
+        }
+        return prev;
+      }
+      if (autoAdvance && roomPlayMode === "MANUAL") {
+        audioEngine.stop();
+        return { ...prev, isPlaying: false };
+      }
+      const pickIdx =
+        roomPlayMode === "SHUFFLE"
+          ? Math.floor(Math.random() * prev.queue.length)
+          : 0;
+      const nextTrack = prev.queue[pickIdx];
+      const rest = prev.queue.filter((_, idx) => idx !== pickIdx);
       if (prev.isPlaying) {
         if (hasExternalEmbed(nextTrack.url, nextTrack.title, nextTrack.previewUrl)) {
           audioEngine.stop();
@@ -3779,6 +3829,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isGlobalPlaying,
         isLooping,
         toggleLoop,
+        globalPlayMode,
+        setGlobalPlayMode,
         volume,
         setVolume,
         playGlobalTrack,
@@ -3836,6 +3888,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addToRoomQueue,
         prevRoomTrack,
         skipRoomTrack,
+        roomPlayMode,
+        setRoomPlayMode,
         toastMessage,
         showToast,
         confirmDialog,

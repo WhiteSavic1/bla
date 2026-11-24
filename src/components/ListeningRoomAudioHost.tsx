@@ -344,7 +344,7 @@ export function ListeningRoomAudioHost() {
               lastAutoSkipKeyRef.current !== key
             ) {
               lastAutoSkipKeyRef.current = key;
-              skipRoomTrackRef.current();
+              skipRoomTrackRef.current(true);
             }
           }
         }
@@ -369,7 +369,7 @@ export function ListeningRoomAudioHost() {
         const key = `${listeningRoom.currentTrack?.id || ""}_${listeningRoom.positionUpdatedAt || 0}`;
         if (lastAutoSkipKeyRef.current !== key) {
           lastAutoSkipKeyRef.current = key;
-          skipRoomTrackRef.current();
+          skipRoomTrackRef.current(true);
           return;
         }
       }
@@ -382,7 +382,27 @@ export function ListeningRoomAudioHost() {
     };
     tick();
     const t = setInterval(tick, 300);
-    return () => clearInterval(t);
+    // Arka planda setInterval yavaşlatılsa bile süre dolunca otomatik sonraki şarkıya geç
+    let endTimer: ReturnType<typeof setTimeout> | null = null;
+    if (
+      listeningRoom.isPlaying &&
+      roomDurationSec > 0 &&
+      listeningRoom.queue.length > 0
+    ) {
+      const remMs = Math.max(250, (roomDurationSec - computeSyncedSec()) * 1000);
+      endTimer = setTimeout(tick, remMs);
+    }
+    const onVis = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      clearInterval(t);
+      if (endTimer) clearTimeout(endTimer);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
   }, [
     isJoinedRoom,
     listeningRoom.currentTrack?.id,
@@ -475,7 +495,7 @@ export function ListeningRoomAudioHost() {
                 actualPlayerSecRef.current = target;
               }
             }}
-            onEnded={skipRoomTrack}
+            onEnded={() => skipRoomTrack(true)}
             className="hidden"
           />
         )}
@@ -610,7 +630,7 @@ export function ListeningRoomAudioHost() {
               </button>
               <button
                 type="button"
-                onClick={skipRoomTrack}
+                onClick={() => skipRoomTrack(false)}
                 disabled={listeningRoom.queue.length === 0}
                 title="Sonraki Şarkı"
                 className="rounded-lg p-1.5 text-gray-300 hover:bg-white/10 disabled:opacity-30"

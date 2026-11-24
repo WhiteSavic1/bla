@@ -111,15 +111,43 @@ export function GlobalMiniPlayer() {
   useEffect(() => {
     const el = audioRef.current;
     if (el) {
-      el.volume = Math.max(0, Math.min(1, volume / 100));
+      el.volume = Math.pow(Math.max(0, Math.min(100, volume)) / 100, 2);
     }
     if (ytIframeRef.current?.contentWindow) {
+      const ytVol =
+        volume <= 0 ? 0 : Math.max(1, Math.round(Math.pow(volume / 100, 1.8) * 100));
       ytIframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [volume] }),
+        JSON.stringify({ event: "command", func: "setVolume", args: [ytVol] }),
         "*"
       );
     }
   }, [volume, globalTrack]);
+
+  // Arka planda tarayıcı zamanlayıcıları yavaşlatsa bile şarkı bitince sıradakine geç
+  useEffect(() => {
+    if (!isGlobalPlaying || !globalTrack || duration <= 0) return;
+    const endLimit =
+      typeof globalTrack.endSec === "number" &&
+      globalTrack.endSec > (globalTrack.startSec || 0)
+        ? globalTrack.endSec
+        : duration;
+    const remSec = Math.max(0.5, endLimit - currentTime);
+    const timer = setTimeout(() => {
+      if (isLoopingRef.current) {
+        ytIframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({
+            event: "command",
+            func: "seekTo",
+            args: [globalTrack.startSec || 0, true],
+          }),
+          "*"
+        );
+      } else {
+        nextRef.current(true);
+      }
+    }, remSec * 1000);
+    return () => clearTimeout(timer);
+  }, [isGlobalPlaying, globalTrack?.id, duration, Math.floor(currentTime / 5)]);
 
   useEffect(() => {
     const el = audioRef.current;
