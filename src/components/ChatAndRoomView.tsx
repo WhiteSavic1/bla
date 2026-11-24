@@ -121,7 +121,9 @@ export function ChatAndRoomView() {
   const [showNewChatPicker, setShowNewChatPicker] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [groupMemberSearch, setGroupMemberSearch] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
+  const [seenMsgMap, setSeenMsgMap] = useState<Record<string, string>>({});
   const [roomTime, setRoomTime] = useState(0);
   const roomDuration = roomDurationSec;
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -467,6 +469,100 @@ export function ChatAndRoomView() {
       friendIds.includes(u.id) &&
       !blockedUserIds.includes(u.id)
   );
+  const groupSearchNorm = groupMemberSearch.trim().toLocaleLowerCase("tr-TR");
+  const filteredGroupFriends = groupSearchNorm
+    ? selectableFriends.filter(
+        (u) =>
+          u.nickname.toLocaleLowerCase("tr-TR").includes(groupSearchNorm) ||
+          u.username.toLocaleLowerCase("tr-TR").includes(groupSearchNorm)
+      )
+    : selectableFriends;
+
+  // Okunmamış mesaj takibi (sol Sohbetler listesi bildirimi)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`satir_arasi_seen_msgs_${currentUser.id}`);
+      if (raw) {
+        setSeenMsgMap(JSON.parse(raw));
+      } else {
+        // İlk kez yükleniyorsa mevcut sohbetlerin son mesajlarını görülmüş say
+        const init: Record<string, string> = {};
+        myConversations.forEach((c) => {
+          const last = c.messages[c.messages.length - 1];
+          if (last) init[c.id] = last.id;
+        });
+        setSeenMsgMap(init);
+        localStorage.setItem(
+          `satir_arasi_seen_msgs_${currentUser.id}`,
+          JSON.stringify(init)
+        );
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
+  const isViewingActiveConvMessages =
+    Boolean(activeConv) &&
+    (typeof window === "undefined" ||
+      window.innerWidth >= 768 ||
+      mobileTab === "MESSAGES");
+
+  useEffect(() => {
+    if (!activeConv || !isViewingActiveConvMessages) return;
+    const last = activeConv.messages[activeConv.messages.length - 1];
+    if (!last) return;
+    setSeenMsgMap((prev) => {
+      if (prev[activeConv.id] === last.id) return prev;
+      const next = { ...prev, [activeConv.id]: last.id };
+      try {
+        localStorage.setItem(
+          `satir_arasi_seen_msgs_${currentUser.id}`,
+          JSON.stringify(next)
+        );
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, [
+    activeConv,
+    activeConv?.id,
+    activeConv?.messages.length,
+    isViewingActiveConvMessages,
+    currentUser.id,
+  ]);
+
+  const getUnreadCount = (conv: (typeof myConversations)[number]): number => {
+    if (
+      activeConv?.id === conv.id &&
+      isViewingActiveConvMessages
+    ) {
+      return 0;
+    }
+    const msgs = conv.messages || [];
+    if (msgs.length === 0) return 0;
+    const seenId = seenMsgMap[conv.id];
+    if (seenId) {
+      const idx = msgs.findIndex((m) => m.id === seenId);
+      if (idx >= 0) {
+        return msgs
+          .slice(idx + 1)
+          .filter((m) => m.senderId !== currentUser.id).length;
+      }
+    }
+    let lastMyIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].senderId === currentUser.id) {
+        lastMyIdx = i;
+        break;
+      }
+    }
+    return msgs
+      .slice(lastMyIdx + 1)
+      .filter((m) => m.senderId !== currentUser.id).length;
+  };
 
   return (
     <div className="mx-auto max-w-[1440px] w-full px-3 sm:px-4 pt-14 pb-4 flex-1 min-h-0 flex flex-col">
@@ -544,7 +640,10 @@ export function ChatAndRoomView() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setShowGroupCreator(false)}
+                  onClick={() => {
+                    setShowGroupCreator(false);
+                    setGroupMemberSearch("");
+                  }}
                   className="text-gray-400 hover:text-white"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -557,13 +656,22 @@ export function ChatAndRoomView() {
                 placeholder="Grup adı..."
                 className="w-full rounded-lg border border-white/10 bg-[#151821] px-2.5 py-1.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500/50 focus:outline-none"
               />
+              <input
+                type="text"
+                value={groupMemberSearch}
+                onChange={(e) => setGroupMemberSearch(e.target.value)}
+                placeholder="Arkadaş ara..."
+                className="w-full rounded-lg border border-white/10 bg-[#151821] px-2.5 py-1.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500/50 focus:outline-none"
+              />
               <div className="max-h-32 overflow-y-auto space-y-1">
-                {selectableFriends.length === 0 ? (
+                {filteredGroupFriends.length === 0 ? (
                   <p className="text-[11px] text-gray-500">
-                    Eklenebilecek başka kullanıcı yok.
+                    {selectableFriends.length === 0
+                      ? "Eklenebilecek başka kullanıcı yok."
+                      : "Aramaya uygun arkadaş bulunamadı."}
                   </p>
                 ) : (
-                  selectableFriends.map((u) => {
+                  filteredGroupFriends.map((u) => {
                     const checked = groupMemberIds.includes(u.id);
                     return (
                       <button
@@ -616,12 +724,15 @@ export function ChatAndRoomView() {
                   ? conv.groupName || "Grup Sohbeti"
                   : p!.nickname;
                 const memberCount = conv.memberIds?.length ?? 0;
+                const unreadCount = getUnreadCount(conv);
                 return (
                   <div
                     key={conv.id}
                     className={`flex w-full items-center gap-2 rounded-xl p-2 transition ${
                       isSelected
                         ? "bg-indigo-600/20 border border-indigo-500/30"
+                        : unreadCount > 0
+                        ? "bg-rose-500/10 border border-rose-500/25 hover:bg-rose-500/15"
                         : "hover:bg-white/5"
                     }`}
                   >
@@ -661,17 +772,24 @@ export function ChatAndRoomView() {
                           <span className="truncate text-xs font-semibold text-white">
                             {displayTitle}
                           </span>
-                          {isGroup ? (
-                            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] text-emerald-300 shrink-0">
-                              {memberCount} üye
-                            </span>
-                          ) : (
-                            conv.status === "PENDING" && (
-                              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">
-                                İstek
+                          <div className="flex items-center gap-1 shrink-0">
+                            {unreadCount > 0 && (
+                              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow">
+                                {unreadCount}
                               </span>
-                            )
-                          )}
+                            )}
+                            {isGroup ? (
+                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] text-emerald-300 shrink-0">
+                                {memberCount} üye
+                              </span>
+                            ) : (
+                              conv.status === "PENDING" && (
+                                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] text-amber-300">
+                                  İstek
+                                </span>
+                              )
+                            )}
+                          </div>
                         </div>
                         <div className="truncate text-[11px] text-gray-400">
                           {conv.messages[conv.messages.length - 1]?.body ||
@@ -1678,26 +1796,7 @@ export function ChatAndRoomView() {
               </span>
             </div>
 
-            {/* Spotify Embed (YouTube ve ses dosyası ListeningRoomAudioHost üzerinden kesintisiz çalar) */}
-            {isJoinedRoom && (() => {
-              const trk = listeningRoom.currentTrack;
-              if (!trk) return null;
-              const spId = extractSpotifyTrackId(trk.url);
-              if (spId && listeningRoom.isPlaying) {
-                return (
-                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black">
-                    <iframe
-                      key={spId}
-                      src={`https://open.spotify.com/embed/track/${spId}?theme=0`}
-                      title={trk.title}
-                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                      className="h-20 w-full"
-                    />
-                  </div>
-                );
-              }
-              return null;
-            })()}
+            {/* Tüm şarkılar (Spotify dahil) ListeningRoomAudioHost üzerinden kesintisiz çalar */}
 
             {/* Gerçek Şarkı Sıraya Ekleme & Müzik Listesi Sıraya Ekleme */}
             {isJoinedRoom && listeningRoom.allowCollaborativeQueue && (
@@ -1780,7 +1879,7 @@ export function ChatAndRoomView() {
                           }}
                           className="w-full rounded-lg bg-emerald-500 py-1.5 text-[11px] font-semibold text-black hover:bg-emerald-400 disabled:opacity-40 transition"
                         >
-                          Listedeki Tüm Şarkıları Sıraya Ekle
+                          Listeyi Çal (Sırayı Değiştir)
                         </button>
                       </div>
                     );

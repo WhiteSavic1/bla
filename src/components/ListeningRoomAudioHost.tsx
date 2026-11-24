@@ -190,6 +190,17 @@ export function ListeningRoomAudioHost() {
     }
   };
 
+  const toYoutubeVolume = (v: number) => {
+    const clamped = Math.max(0, Math.min(100, v));
+    if (clamped <= 0) return 0;
+    return Math.max(1, Math.round(Math.pow(clamped / 100, 1.8) * 100));
+  };
+
+  const toHtmlAudioVolume = (v: number) => {
+    const clamped = Math.max(0, Math.min(100, v));
+    return Math.pow(clamped / 100, 2.0);
+  };
+
   useEffect(() => {
     const nextId = listeningRoom.currentTrack?.id;
     if (nextId !== lastTrackIdRef.current) {
@@ -205,6 +216,52 @@ export function ListeningRoomAudioHost() {
     listeningRoom.currentTrack?.id,
     listeningRoom.currentTrack?.previewUrl,
     setRoomDurationSec,
+  ]);
+
+  // Spotify veya doğrudan ses linki olmayan şarkıları otomatik YouTube / önizleme sesine çöz
+  useEffect(() => {
+    const trk = listeningRoom.currentTrack;
+    if (!isJoinedRoom || !trk) return;
+    const primaryYt = extractYouTubeId(trk.url);
+    const hasAltYt = Array.isArray(trk.altYoutubeIds) && trk.altYoutubeIds.length > 0;
+    if (primaryYt || hasAltYt || trk.previewUrl || fetchedAltIds.length > 0 || resolvedPreviewUrl) {
+      return;
+    }
+    let cancelled = false;
+    const q = `${trk.title} ${trk.artist || ""}`.trim();
+    if (!q) return;
+    Promise.all([
+      fetch(`/api/youtube-resolve?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .catch(() => null),
+      fetch(`/api/music-search?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .catch(() => null),
+    ]).then(([ytData, itunesData]) => {
+      if (cancelled) return;
+      const newIds: string[] = Array.isArray(ytData?.videoIds)
+        ? ytData.videoIds
+        : [];
+      const preview = itunesData?.results?.[0]?.previewUrl as string | undefined;
+      if (preview) setResolvedPreviewUrl(preview);
+      if (newIds.length > 0) {
+        setFetchedAltIds(newIds);
+      } else if (preview) {
+        setUsePreviewFallback(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isJoinedRoom,
+    listeningRoom.currentTrack?.id,
+    listeningRoom.currentTrack?.url,
+    listeningRoom.currentTrack?.title,
+    listeningRoom.currentTrack?.artist,
+    listeningRoom.currentTrack?.previewUrl,
+    fetchedAltIds.length,
+    resolvedPreviewUrl,
   ]);
 
   const roomYtCandidates = React.useMemo(() => {
@@ -349,11 +406,11 @@ export function ListeningRoomAudioHost() {
   useEffect(() => {
     const el = roomAudioRef.current;
     if (el) {
-      el.volume = Math.max(0, Math.min(1, volume / 100));
+      el.volume = toHtmlAudioVolume(volume);
       if (
         isJoinedRoom &&
         listeningRoom.isPlaying &&
-        listeningRoom.currentTrack?.previewUrl
+        (listeningRoom.currentTrack?.previewUrl || resolvedPreviewUrl)
       ) {
         el.play().catch(() => {});
       } else {
@@ -362,7 +419,11 @@ export function ListeningRoomAudioHost() {
     }
     if (roomYoutubeRef.current?.contentWindow) {
       roomYoutubeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [volume] }),
+        JSON.stringify({
+          event: "command",
+          func: "setVolume",
+          args: [toYoutubeVolume(volume)],
+        }),
         "*"
       );
       roomYoutubeRef.current.contentWindow.postMessage(
@@ -435,7 +496,7 @@ export function ListeningRoomAudioHost() {
                 JSON.stringify({
                   event: "command",
                   func: "setVolume",
-                  args: [volume],
+                  args: [toYoutubeVolume(volume)],
                 }),
                 "*"
               );

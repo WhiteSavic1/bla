@@ -186,9 +186,21 @@ export async function POST(req: Request) {
               })
             );
           }
-          const merged = mergeById(existing, incoming as AnyItem[]).filter(
+          let merged = mergeById(existing, incoming as AnyItem[]).filter(
             (x) => !x?.id || !deletedSet.has(x.id)
           );
+          if (key === "friendRequests") {
+            const existingMap = new Map(
+              existing.filter((x) => x?.id).map((x) => [x.id as string, x])
+            );
+            merged = merged.map((item) => {
+              const prev = item?.id ? existingMap.get(item.id) : undefined;
+              if (prev?.status === "ACCEPTED" && item.status === "PENDING") {
+                return { ...item, status: "ACCEPTED" };
+              }
+              return item;
+            });
+          }
           await kvSetJson(`shared:${key}`, merged);
           return;
         }

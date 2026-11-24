@@ -894,10 +894,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setPlaylists(remote.playlists);
         }
         if (Array.isArray(remote.friendRequests)) {
-          lastSyncedPerKeyRef.current.friendRequests = JSON.stringify(
-            remote.friendRequests
-          );
-          setFriendRequests(remote.friendRequests);
+          const remoteList = remote.friendRequests as FriendRequest[];
+          const prevSyncedJson = lastSyncedPerKeyRef.current.friendRequests;
+          let prevSyncedIds = new Set<string>();
+          if (prevSyncedJson) {
+            try {
+              const parsed = JSON.parse(prevSyncedJson) as FriendRequest[];
+              prevSyncedIds = new Set(parsed.map((r) => r.id));
+            } catch {
+              // ignore
+            }
+          }
+          lastSyncedPerKeyRef.current.friendRequests = JSON.stringify(remoteList);
+          setFriendRequests((prev) => {
+            const remoteIds = new Set(remoteList.map((r) => r.id));
+            const unsyncedLocal = prev.filter(
+              (r) => !remoteIds.has(r.id) && !prevSyncedIds.has(r.id)
+            );
+            const mergedRemote = remoteList.map((rr) => {
+              const localMatch = prev.find((lr) => lr.id === rr.id);
+              if (
+                localMatch &&
+                localMatch.status === "ACCEPTED" &&
+                rr.status === "PENDING"
+              ) {
+                return localMatch;
+              }
+              return rr;
+            });
+            return [...unsyncedLocal, ...mergedRemote];
+          });
         }
         if (Array.isArray(remote.conversations)) {
           lastSyncedPerKeyRef.current.conversations = JSON.stringify(
@@ -2130,7 +2156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const sendFriendRequest = (userId: string) => {
     if (!requireAuthAction()) return;
-    if (friendIds.includes(userId)) {
+    if (effectiveFriendIds.includes(userId)) {
       showToast("Bu kişiyle zaten arkadaşsınız.");
       return;
     }
@@ -3372,30 +3398,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addPlaylistToRoomQueue = (tracks: TrackInfo[]) => {
     if (!tracks || tracks.length === 0) return;
-    let addedCount = 0;
-    updateRoomAndSync((prev) => {
-      const existing = [...prev.queue];
-      const toAdd: TrackInfo[] = [];
-      tracks.forEach((t, i) => {
-        const dup =
-          existing.some((x) => isSameTrack(x, t)) ||
-          toAdd.some((x) => isSameTrack(x, t));
-        if (!dup) {
-          toAdd.push({ ...t, id: `${t.id}_${Date.now()}_${i}` });
-        }
-      });
-      addedCount = toAdd.length;
-      if (toAdd.length === 0) return prev;
-      return {
-        ...prev,
-        queue: [...prev.queue, ...toAdd],
-      };
-    });
-    showToast(
-      addedCount > 0
-        ? `${addedCount} şarkı dinleme sırasına eklendi.`
-        : "Listedeki şarkılar zaten sırada."
-    );
+    const now = Date.now();
+    const normalized = tracks.map((t, i) => ({
+      ...t,
+      id: `${t.id}_${now}_${i}`,
+    }));
+    const [firstTrack, ...restTracks] = normalized;
+    updateRoomAndSync((prev) => ({
+      ...prev,
+      currentTrack: firstTrack,
+      queue: restTracks,
+      history: [],
+      isPlaying: true,
+      positionSec: 0,
+      positionUpdatedAt: now,
+      seekNonce: (prev.seekNonce || 0) + 1,
+    }));
+    showToast(`${normalized.length} şarkılık liste başlatıldı.`);
   };
 
   const moveRoomQueueTrack = (index: number, direction: -1 | 1) => {
