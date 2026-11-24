@@ -353,6 +353,16 @@ export function ListeningRoomAudioHost() {
           }
           return;
         }
+        if (data?.event === "onStateChange" && data?.info === 0) {
+          const cur = listeningRoomRef.current;
+          const joined = (cur.participantIds || []).includes(currentUser.id);
+          const key = `${cur.currentTrack?.id || ""}_${cur.positionUpdatedAt || 0}`;
+          if (joined && cur.isPlaying && lastAutoSkipKeyRef.current !== key) {
+            lastAutoSkipKeyRef.current = key;
+            skipRoomTrackRef.current(true);
+          }
+          return;
+        }
         if (data?.event === "infoDelivery" && data?.info) {
           if (typeof data.info.currentTime === "number") {
             actualPlayerSecRef.current = data.info.currentTime;
@@ -367,7 +377,6 @@ export function ListeningRoomAudioHost() {
             if (
               joined &&
               cur.isPlaying &&
-              cur.queue.length > 0 &&
               lastAutoSkipKeyRef.current !== key
             ) {
               lastAutoSkipKeyRef.current = key;
@@ -390,8 +399,7 @@ export function ListeningRoomAudioHost() {
       if (
         listeningRoom.isPlaying &&
         roomDurationSec > 0 &&
-        target >= roomDurationSec &&
-        listeningRoom.queue.length > 0
+        target >= roomDurationSec
       ) {
         const key = `${listeningRoom.currentTrack?.id || ""}_${listeningRoom.positionUpdatedAt || 0}`;
         if (lastAutoSkipKeyRef.current !== key) {
@@ -411,11 +419,7 @@ export function ListeningRoomAudioHost() {
     const t = setInterval(tick, 300);
     // Arka planda setInterval yavaşlatılsa bile süre dolunca otomatik sonraki şarkıya geç
     let endTimer: ReturnType<typeof setTimeout> | null = null;
-    if (
-      listeningRoom.isPlaying &&
-      roomDurationSec > 0 &&
-      listeningRoom.queue.length > 0
-    ) {
+    if (listeningRoom.isPlaying && roomDurationSec > 0) {
       const remMs = Math.max(250, (roomDurationSec - computeSyncedSec()) * 1000);
       endTimer = setTimeout(tick, remMs);
     }
@@ -474,6 +478,7 @@ export function ListeningRoomAudioHost() {
     if (!win) return;
     const target = computeSyncedSec();
     actualPlayerSecRef.current = target;
+    win.postMessage(JSON.stringify({ event: "listening" }), "*");
     win.postMessage(
       JSON.stringify({
         event: "command",
