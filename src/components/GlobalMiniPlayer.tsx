@@ -108,6 +108,55 @@ export function GlobalMiniPlayer() {
     }
   };
 
+  const initialGlobalYtIdRef = useRef<string | null>(null);
+  const lastLoadedGlobalYtIdRef = useRef<string | null>(null);
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+
+  const activeYtKey = activeYtId ? `${activeYtId}_${globalTrack?.startSec || 0}` : null;
+  if (activeYtId && !initialGlobalYtIdRef.current) {
+    initialGlobalYtIdRef.current = activeYtId;
+  }
+  if (!activeYtId) {
+    initialGlobalYtIdRef.current = null;
+    lastLoadedGlobalYtIdRef.current = null;
+  }
+
+  useEffect(() => {
+    if (!activeYtId || !activeYtKey) return;
+    if (!lastLoadedGlobalYtIdRef.current) {
+      lastLoadedGlobalYtIdRef.current = activeYtKey;
+      return;
+    }
+    if (lastLoadedGlobalYtIdRef.current === activeYtKey) return;
+    lastLoadedGlobalYtIdRef.current = activeYtKey;
+    const win = ytIframeRef.current?.contentWindow;
+    if (!win) return;
+    const startSec = globalTrack?.startSec || 0;
+    win.postMessage(
+      JSON.stringify({
+        event: "command",
+        func: "loadVideoById",
+        args: [{ videoId: activeYtId, startSeconds: startSec }],
+      }),
+      "*"
+    );
+    const ytVol =
+      volumeRef.current <= 0
+        ? 0
+        : Math.max(1, Math.round(Math.pow(volumeRef.current / 100, 1.8) * 100));
+    win.postMessage(
+      JSON.stringify({ event: "command", func: "setVolume", args: [ytVol] }),
+      "*"
+    );
+    if (!isGlobalPlaying) {
+      win.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo", args: [] }),
+        "*"
+      );
+    }
+  }, [activeYtId, activeYtKey, globalTrack?.startSec, isGlobalPlaying]);
+
   useEffect(() => {
     const el = audioRef.current;
     if (el) {
@@ -152,7 +201,7 @@ export function GlobalMiniPlayer() {
   useEffect(() => {
     const el = audioRef.current;
     if (el && shouldPlayPreviewAudio) {
-      el.volume = Math.max(0, Math.min(1, volume / 100));
+      el.volume = Math.pow(Math.max(0, Math.min(100, volume)) / 100, 2);
       if (isGlobalPlaying) {
         el.play().catch(() => {});
       } else {
@@ -490,13 +539,12 @@ export function GlobalMiniPlayer() {
       )}
 
       {/* Gizli YouTube Ses Oynatıcı (Video kutusu gizli, sadece ses çalar; src sabit kalır ki durdur/başlat sıfırlamasın) */}
-      {ytId && (
+      {ytId && initialGlobalYtIdRef.current && (
         <div className="h-0 w-0 overflow-hidden opacity-0 pointer-events-none">
           <iframe
             ref={ytIframeRef}
-            key={`${ytId}_${globalTrack.startSec || 0}`}
             className="h-1 w-1"
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&enablejsapi=1${
+            src={`https://www.youtube.com/embed/${initialGlobalYtIdRef.current}?autoplay=1&enablejsapi=1${
               typeof globalTrack.startSec === "number" && globalTrack.startSec > 0
                 ? `&start=${Math.floor(globalTrack.startSec)}`
                 : ""

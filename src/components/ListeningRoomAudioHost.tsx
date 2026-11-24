@@ -39,6 +39,8 @@ export function ListeningRoomAudioHost() {
 
   const roomAudioRef = useRef<HTMLAudioElement | null>(null);
   const roomYoutubeRef = useRef<HTMLIFrameElement | null>(null);
+  const initialRoomYtIdRef = useRef<string | null>(null);
+  const lastLoadedRoomYtIdRef = useRef<string | null>(null);
   const actualPlayerSecRef = useRef<number>(0);
   const lastSeekNonceRef = useRef<number>(0);
   const lastTrackIdRef = useRef<string | undefined>(undefined);
@@ -153,6 +155,8 @@ export function ListeningRoomAudioHost() {
   skipRoomTrackRef.current = skipRoomTrack;
   const listeningRoomRef = useRef(listeningRoom);
   listeningRoomRef.current = listeningRoom;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
 
   const isJoinedRoom = (listeningRoom.participantIds || []).includes(
     currentUser.id
@@ -289,6 +293,29 @@ export function ListeningRoomAudioHost() {
       if (typeof ev.data !== "string") return;
       try {
         const data = JSON.parse(ev.data);
+        if (data?.event === "onReady") {
+          const win = roomYoutubeRef.current?.contentWindow;
+          const cur = listeningRoomRef.current;
+          if (win && cur.currentTrack) {
+            win.postMessage(
+              JSON.stringify({
+                event: "command",
+                func: "setVolume",
+                args: [toYoutubeVolume(volumeRef.current)],
+              }),
+              "*"
+            );
+            win.postMessage(
+              JSON.stringify({
+                event: "command",
+                func: cur.isPlaying ? "playVideo" : "pauseVideo",
+                args: [],
+              }),
+              "*"
+            );
+          }
+          return;
+        }
         if (data?.event === "onError") {
           if (roomYtIdxRef.current + 1 < roomYtLenRef.current) {
             setYtAttemptIdx((i) => i + 1);
@@ -423,6 +450,54 @@ export function ListeningRoomAudioHost() {
     }
   }, [listeningRoom.seekNonce, isJoinedRoom, listeningRoom.currentTrack?.id]);
 
+  const trk = isJoinedRoom ? listeningRoom.currentTrack : null;
+  const ytId =
+    trk && !usePreviewFallback ? roomYtCandidates[ytAttemptIdx] || null : null;
+  if (ytId && !initialRoomYtIdRef.current) {
+    initialRoomYtIdRef.current = ytId;
+  }
+  if (!ytId) {
+    initialRoomYtIdRef.current = null;
+    lastLoadedRoomYtIdRef.current = null;
+  }
+
+  // Mevcut YouTube iframe'i kapatmadan sonraki şarkıyı loadVideoById ile yükle (arka planda ses kesilmez)
+  useEffect(() => {
+    if (!ytId) return;
+    if (!lastLoadedRoomYtIdRef.current) {
+      lastLoadedRoomYtIdRef.current = ytId;
+      return;
+    }
+    if (lastLoadedRoomYtIdRef.current === ytId) return;
+    lastLoadedRoomYtIdRef.current = ytId;
+    const win = roomYoutubeRef.current?.contentWindow;
+    if (!win) return;
+    const target = computeSyncedSec();
+    actualPlayerSecRef.current = target;
+    win.postMessage(
+      JSON.stringify({
+        event: "command",
+        func: "loadVideoById",
+        args: [{ videoId: ytId, startSeconds: target }],
+      }),
+      "*"
+    );
+    win.postMessage(
+      JSON.stringify({
+        event: "command",
+        func: "setVolume",
+        args: [toYoutubeVolume(volumeRef.current)],
+      }),
+      "*"
+    );
+    if (!listeningRoom.isPlaying) {
+      win.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo", args: [] }),
+        "*"
+      );
+    }
+  }, [ytId, listeningRoom.isPlaying]);
+
   useEffect(() => {
     const el = roomAudioRef.current;
     if (el) {
@@ -462,13 +537,14 @@ export function ListeningRoomAudioHost() {
     isJoinedRoom,
     listeningRoom.isPlaying,
     listeningRoom.currentTrack?.id,
+    ytId,
+    resolvedPreviewUrl,
+    usePreviewFallback,
     volume,
   ]);
 
-  if (!isJoinedRoom || !listeningRoom.currentTrack) return null;
+  if (!isJoinedRoom || !listeningRoom.currentTrack || !trk) return null;
 
-  const trk = listeningRoom.currentTrack;
-  const ytId = !usePreviewFallback ? roomYtCandidates[ytAttemptIdx] || null : null;
   const effectivePreviewUrl =
     trk.previewUrl || resolvedPreviewUrl || undefined;
   const shouldPlayPreviewAudio =
@@ -499,11 +575,10 @@ export function ListeningRoomAudioHost() {
             className="hidden"
           />
         )}
-        {ytId && (
+        {ytId && initialRoomYtIdRef.current && (
           <iframe
             ref={roomYoutubeRef}
-            key={ytId}
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&enablejsapi=1`}
+            src={`https://www.youtube.com/embed/${initialRoomYtIdRef.current}?autoplay=1&enablejsapi=1`}
             title={trk.title}
             allow="autoplay; encrypted-media"
             onLoad={() => {
