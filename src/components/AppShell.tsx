@@ -93,10 +93,10 @@ export function AppShell() {
     <div
       className={
         isFixedViewportSection
-          ? `relative h-screen w-full overflow-hidden ${
+          ? `relative h-[100dvh] w-full overflow-hidden ${
               resolvedTheme === "light" ? "bg-[#f3f5f9]" : "bg-[#0F1115]"
             }`
-          : `relative min-h-screen w-full overflow-x-hidden ${
+          : `relative min-h-[100dvh] w-full overflow-x-hidden ${
               resolvedTheme === "light" ? "bg-[#f3f5f9]" : "bg-[#0F1115]"
             }`
       }
@@ -123,15 +123,15 @@ export function AppShell() {
       <div
         className={
           isFixedViewportSection
-            ? "relative z-10 flex flex-col h-screen overflow-hidden"
-            : "relative z-10 flex flex-col min-h-screen"
+            ? "relative z-10 flex flex-col h-[100dvh] w-full min-w-0 overflow-hidden"
+            : "relative z-10 flex flex-col min-h-[100dvh] w-full min-w-0"
         }
       >
         <HamburgerDrawer />
         <VoiceCallPanel />
 
         {activeSection === "FEED" && (
-          <main className="mx-auto max-w-3xl px-3 sm:px-4 pt-18 pb-28 space-y-5">
+          <main className="mx-auto w-full min-w-0 max-w-3xl px-3 sm:px-4 pt-18 pb-28 space-y-5">
             {/* Akış Sekmeleri: Sol Üstte Genel | Arkadaşlar */}
             <div className="flex items-center justify-start">
               <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-[#151821]/90 p-1 backdrop-blur-md">
@@ -226,7 +226,7 @@ export function AppShell() {
                   value={tagSearchInput}
                   onChange={(e) => setTagSearchInput(e.target.value)}
                   placeholder="#etiket yazıp filtrele..."
-                  className="w-48 sm:w-56 rounded-full border border-white/10 bg-[#151821]/85 px-3.5 py-1.5 text-xs text-white placeholder-gray-400 backdrop-blur-md focus:border-indigo-500 focus:outline-none"
+                  className="w-full max-w-[14rem] sm:w-56 rounded-full border border-white/10 bg-[#151821]/85 px-3.5 py-1.5 text-xs text-white placeholder-gray-400 backdrop-blur-md focus:border-indigo-500 focus:outline-none"
                 />
                 {tagSearchInput && (
                   <button

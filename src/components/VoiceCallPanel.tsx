@@ -186,6 +186,7 @@ export function VoiceCallPanel() {
   const [streamVolume, setStreamVolume] = useState(100);
   const [streamMuted, setStreamMuted] = useState(false);
   const [streamCtxMenu, setStreamCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [activePeerVolId, setActivePeerVolId] = useState<string | null>(null);
   const remoteVideoStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamsByPeerRef = useRef<Map<string, MediaStream>>(new Map());
   const streamAudioGainNodesRef = useRef<GainNode[]>([]);
@@ -1873,7 +1874,7 @@ export function VoiceCallPanel() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={toggleMute}
@@ -2151,7 +2152,12 @@ export function VoiceCallPanel() {
             return (
               <span
                 key={p.id}
-                className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200"
+                onClick={() => {
+                  if (p.id !== currentUser.id && isInCall) {
+                    setActivePeerVolId((prev) => (prev === p.id ? null : p.id));
+                  }
+                }}
+                className="flex flex-wrap items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200 cursor-pointer sm:cursor-default"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 <span>
@@ -2169,7 +2175,12 @@ export function VoiceCallPanel() {
                   </span>
                 )}
                 {p.id !== currentUser.id && isInCall && (
-                  <span className="ml-1 flex items-center gap-1 border-l border-emerald-500/30 pl-1.5">
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    className={`${
+                      activePeerVolId === p.id ? "flex" : "hidden sm:flex"
+                    } ml-1 items-center gap-1 border-l border-emerald-500/30 pl-1.5`}
+                  >
                     <Volume2 className="h-3 w-3 text-emerald-300 shrink-0" />
                     <input
                       type="range"
@@ -2202,6 +2213,20 @@ export function VoiceCallPanel() {
               setIsStreamUiIdle(true);
             }, 2500);
           }}
+          onTouchStart={() => {
+            setIsStreamUiIdle(false);
+            if (streamIdleTimerRef.current) clearTimeout(streamIdleTimerRef.current);
+            streamIdleTimerRef.current = setTimeout(() => {
+              setIsStreamUiIdle(true);
+            }, 3500);
+          }}
+          onClick={() => {
+            setIsStreamUiIdle(false);
+            if (streamIdleTimerRef.current) clearTimeout(streamIdleTimerRef.current);
+            streamIdleTimerRef.current = setTimeout(() => {
+              setIsStreamUiIdle(true);
+            }, 3500);
+          }}
           onMouseLeave={() => {
             if (streamIdleTimerRef.current) clearTimeout(streamIdleTimerRef.current);
             setIsStreamUiIdle(true);
@@ -2211,12 +2236,12 @@ export function VoiceCallPanel() {
             setIsStreamUiIdle(false);
             setStreamCtxMenu({ x: e.clientX, y: e.clientY });
           }}
-          title="Yayın sesi için sağ tıkla"
+          title="Yayın sesi için sağ tıkla veya ses butonuna dokun"
           className={`relative flex flex-col justify-between overflow-hidden bg-black transition-all ${
             isStreamUiIdle ? "cursor-none" : ""
           } ${
             isFullscreen
-              ? "fixed inset-0 h-screen w-screen rounded-none border-0"
+              ? "fixed inset-0 h-[100dvh] w-screen rounded-none border-0"
               : `mx-auto w-fit max-w-full rounded-xl ${
                   isStreamUiIdle ? "border-0" : "border border-white/15"
                 }`
@@ -2228,15 +2253,37 @@ export function VoiceCallPanel() {
             playsInline
             className={
               isFullscreen
-                ? "w-screen h-screen object-fill"
-                : "block h-60 w-auto max-w-full object-contain"
+                ? "w-screen h-[100dvh] object-contain sm:object-fill"
+                : "block max-h-60 w-auto max-w-full object-contain"
             }
           />
           <div
+            onClick={(e) => e.stopPropagation()}
             className={`absolute right-2 top-2 flex items-center gap-1.5 transition-opacity duration-300 ${
               isStreamUiIdle ? "opacity-0 pointer-events-none" : "opacity-100"
             }`}
           >
+            <button
+              type="button"
+              title="Yayın Sesi Ayarla"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setIsStreamUiIdle(false);
+                setStreamCtxMenu((prev) =>
+                  prev ? null : { x: rect.left, y: rect.bottom + 8 }
+                );
+              }}
+              className="flex items-center gap-1 rounded-lg bg-black/75 px-2 py-1.5 text-[11px] font-medium text-white hover:bg-black/90"
+            >
+              {streamMuted || streamVolume === 0 ? (
+                <VolumeX className="h-3.5 w-3.5 text-rose-400" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5 text-emerald-400" />
+              )}
+              <span className="tabular-nums">
+                {streamMuted ? "0%" : `%${streamVolume}`}
+              </span>
+            </button>
             <button
               type="button"
               title="Tam Ekran"
@@ -2272,8 +2319,20 @@ export function VoiceCallPanel() {
             <div
               onClick={(e) => e.stopPropagation()}
               style={{
-                left: Math.min(streamCtxMenu.x, (typeof window !== "undefined" ? window.innerWidth : 800) - 220),
-                top: Math.min(streamCtxMenu.y, (typeof window !== "undefined" ? window.innerHeight : 600) - 140),
+                left: Math.max(
+                  8,
+                  Math.min(
+                    streamCtxMenu.x,
+                    (typeof window !== "undefined" ? window.innerWidth : 800) - 220
+                  )
+                ),
+                top: Math.max(
+                  8,
+                  Math.min(
+                    streamCtxMenu.y,
+                    (typeof window !== "undefined" ? window.innerHeight : 600) - 160
+                  )
+                ),
               }}
               className="fixed z-[70] w-52 rounded-xl border border-white/15 bg-[#151821]/95 p-3 shadow-2xl backdrop-blur-md space-y-2.5 text-xs"
             >
@@ -2296,7 +2355,7 @@ export function VoiceCallPanel() {
                 }}
                 className="w-full accent-emerald-400 cursor-pointer"
               />
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setStreamMuted((m) => !m)}

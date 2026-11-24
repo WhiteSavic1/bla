@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Inter,
   Lora,
@@ -36,6 +36,12 @@ const cormorant = Cormorant_Garamond({
   style: ["normal", "italic"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "Satır Arası — Duygu, Blog, Müzik & Sohbet",
   description:
@@ -52,7 +58,7 @@ export default function RootLayout({
       lang="tr"
       className={`${inter.variable} ${lora.variable} ${caveat.variable} ${jetbrainsMono.variable} ${cormorant.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full bg-[#0F1115] text-[#F3F4F6] selection:bg-indigo-500/40 selection:text-white">
+      <body className="min-h-full w-full overflow-x-hidden bg-[#0F1115] text-[#F3F4F6] selection:bg-indigo-500/40 selection:text-white">
         <script
           src="https://accounts.google.com/gsi/client"
           async

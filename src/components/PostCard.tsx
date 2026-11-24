@@ -365,14 +365,14 @@ export function PostCard({ post }: { post: Post }) {
       </div>
 
       {post.title && (
-        <h2 className="mt-4 text-lg sm:text-xl font-semibold text-white">
+        <h2 className="mt-4 text-lg sm:text-xl font-semibold text-white break-words">
           {post.title}
         </h2>
       )}
 
       {/* İçerik (Yazarın Parçalı Yazı Stilleri + Yakın Arkadaşların Altı Çizilileri) */}
       <div
-        className={`mt-3 whitespace-pre-line text-gray-200 leading-relaxed ${getFontClass(
+        className={`mt-3 whitespace-pre-line break-words text-gray-200 leading-relaxed ${getFontClass(
           post.fontStyle
         )}`}
       >
