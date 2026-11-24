@@ -725,6 +725,14 @@ export function ChatAndRoomView() {
                   : p!.nickname;
                 const memberCount = conv.memberIds?.length ?? 0;
                 const unreadCount = getUnreadCount(conv);
+                const isInThisRoom = Boolean(
+                  isJoinedRoom &&
+                    (joinedRoomConvId === conv.id ||
+                      listeningRoom.conversationId === conv.id)
+                );
+                const convRoomUsersCount = (
+                  getRoomForConv(conv.id).participantIds || []
+                ).length;
                 return (
                   <div
                     key={conv.id}
@@ -773,6 +781,17 @@ export function ChatAndRoomView() {
                             {displayTitle}
                           </span>
                           <div className="flex items-center gap-1 shrink-0">
+                            {isInThisRoom ? (
+                              <span className="flex items-center gap-0.5 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 shrink-0">
+                                <Headphones className="h-2.5 w-2.5" />
+                                <span>Odadasın</span>
+                              </span>
+                            ) : convRoomUsersCount > 0 ? (
+                              <span className="flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-400 shrink-0">
+                                <Headphones className="h-2.5 w-2.5" />
+                                <span>{convRoomUsersCount}</span>
+                              </span>
+                            ) : null}
                             {unreadCount > 0 && (
                               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow">
                                 {unreadCount}
@@ -1643,8 +1662,18 @@ export function ChatAndRoomView() {
                 </div>
               )}
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                  Dinleme Odası · {(listeningRoom.participantIds || []).length} kişi
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 truncate">
+                  Dinleme Odası
+                  {(() => {
+                    const rcId = listeningRoom.conversationId || activeConv?.id;
+                    const rc = conversations.find((c) => c.id === rcId);
+                    if (!rc) return "";
+                    const label = rc.isGroup
+                      ? rc.groupName || "Grup"
+                      : users.find((u) => u.id === getOtherPeerId(rc))?.nickname || "Sohbet";
+                    return ` · ${label}`;
+                  })()}{" "}
+                  · {(listeningRoom.participantIds || []).length} kişi
                 </div>
                 <div className="truncate text-sm font-semibold text-white">
                   {listeningRoom.currentTrack?.title || "Şarkı seçilmedi"}
@@ -1672,6 +1701,48 @@ export function ChatAndRoomView() {
               {isJoinedRoom ? "Ayrıl" : "Katıl"}
             </button>
           </div>
+
+          {activeConv &&
+            isJoinedRoom &&
+            listeningRoom.conversationId &&
+            listeningRoom.conversationId !== activeConv.id && (() => {
+              const joinedConv = conversations.find(
+                (c) => c.id === listeningRoom.conversationId
+              );
+              const joinedLabel = joinedConv
+                ? joinedConv.isGroup
+                  ? joinedConv.groupName || "Grup"
+                  : users.find((u) => u.id === getOtherPeerId(joinedConv))
+                      ?.nickname || "Sohbet"
+                : "Diğer Sohbet";
+              const currentLabel = activeConv.isGroup
+                ? activeConv.groupName || "Grup"
+                : users.find((u) => u.id === getOtherPeerId(activeConv))
+                    ?.nickname || "Sohbet";
+              return (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 space-y-2">
+                  <div className="text-[11px] text-amber-200">
+                    Şu an <span className="font-semibold text-white">{joinedLabel}</span> odasındasın.
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => joinListeningRoom(activeConv.id)}
+                      className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400 transition"
+                    >
+                      {currentLabel} Odasına Geç
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveConversationId(listeningRoom.conversationId!)}
+                      className="rounded-lg bg-white/10 px-2.5 py-1 text-[11px] font-medium text-gray-200 hover:bg-white/15 transition"
+                    >
+                      {joinedLabel} Sohbetine Git
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Kontroller */}
             {isJoinedRoom ? (
