@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { isRedisConfigured, kvGetJson, kvSetJson } from "@/lib/kvStore";
+import {
+  attachSessionCookie,
+  checkRateLimit,
+  rateLimitResponse,
+} from "@/lib/security";
 
 interface GoogleUserInfo {
   email?: string;
@@ -20,6 +25,9 @@ interface StoredAccount {
 }
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "auth_google", 25);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
   try {
     const { accessToken } = (await req.json()) as { accessToken?: string };
     if (!accessToken) {
@@ -62,13 +70,17 @@ export async function POST(req: Request) {
 
     const account = await kvGetJson<StoredAccount>(`accounts:${cleanEmail}`);
     if (account?.profile?.id) {
-      return NextResponse.json({
+      const res = NextResponse.json({
         ok: true,
         found: true,
         email: cleanEmail,
         name: userinfo.name,
         picture: userinfo.picture,
         profile: { ...account.profile, email: account.profile.email || cleanEmail },
+      });
+      return attachSessionCookie(res, {
+        userId: account.profile.id,
+        email: cleanEmail,
       });
     }
 
@@ -89,7 +101,7 @@ export async function POST(req: Request) {
         password: "__google_oauth__",
         profile: matchedProfile,
       });
-      return NextResponse.json({
+      const res = NextResponse.json({
         ok: true,
         found: true,
         email: cleanEmail,
@@ -97,14 +109,22 @@ export async function POST(req: Request) {
         picture: userinfo.picture,
         profile: matchedProfile,
       });
+      return attachSessionCookie(res, {
+        userId: matchedProfile.id,
+        email: cleanEmail,
+      });
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       found: false,
       email: cleanEmail,
       name: userinfo.name,
       picture: userinfo.picture,
+    });
+    return attachSessionCookie(res, {
+      userId: cleanEmail,
+      email: cleanEmail,
     });
   } catch {
     return NextResponse.json(

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { isRedisConfigured, kvGetJson, SHARED_KEYS } from "@/lib/kvStore";
+import {
+  isRedisConfigured,
+  kvGetJson,
+  kvMGetJson,
+  SHARED_KEYS,
+} from "@/lib/kvStore";
+import { readSessionFromRequest } from "@/lib/security";
 
 export async function GET(req: Request) {
   if (!isRedisConfigured()) {
@@ -33,24 +39,50 @@ export async function GET(req: Request) {
       });
     }
 
+    const session = readSessionFromRequest(req);
+    const needsAdminCheck = requestedKeys.some(
+      (k) => k === "adminPasswords" || k === "adminPasswordChangedEmails"
+    );
+    const values = await kvMGetJson(requestedKeys.map((k) => `shared:${k}`));
+
+    let isAdmin = false;
+    if (needsAdminCheck && session?.email) {
+      const adminIdx = requestedKeys.indexOf("adminEmails");
+      const rawAdmins =
+        adminIdx >= 0
+          ? (values[adminIdx] as string[] | null)
+          : await kvGetJson<string[]>("shared:adminEmails");
+      const adminSet = new Set(
+        Array.isArray(rawAdmins)
+          ? rawAdmins.map((e) => String(e).trim().toLowerCase())
+          : []
+      );
+      adminSet.add("whitesavic1@gmail.com");
+      isAdmin = adminSet.has(session.email.trim().toLowerCase());
+    }
+
     const result: Record<string, unknown> = {};
     const hashes: Record<string, string> = {};
 
-    await Promise.all(
-      requestedKeys.map(async (key) => {
-        const val = await kvGetJson(`shared:${key}`);
-        const normalized = val ?? (key === "adminPasswords" ? {} : []);
-        const serialized = JSON.stringify(normalized);
-        const h = createHash("sha1")
-          .update(serialized)
-          .digest("hex")
-          .slice(0, 12);
-        hashes[key] = h;
-        if (clientHashes[key] !== h) {
-          result[key] = normalized;
-        }
-      })
-    );
+    requestedKeys.forEach((key, idx) => {
+      if (
+        (key === "adminPasswords" || key === "adminPasswordChangedEmails") &&
+        !isAdmin
+      ) {
+        return;
+      }
+      const val = values[idx];
+      const normalized = val ?? (key === "adminPasswords" ? {} : []);
+      const serialized = JSON.stringify(normalized);
+      const h = createHash("sha1")
+        .update(serialized)
+        .digest("hex")
+        .slice(0, 12);
+      hashes[key] = h;
+      if (clientHashes[key] !== h) {
+        result[key] = normalized;
+      }
+    });
 
     return NextResponse.json(
       { ...result, hashes },

@@ -6,6 +6,8 @@ import {
   mergeById,
   SHARED_KEYS,
 } from "@/lib/kvStore";
+import { emitRealtimeEvent } from "@/lib/realtimeBus";
+import { checkRateLimit, rateLimitResponse } from "@/lib/security";
 
 type AnyItem = { id?: string; [k: string]: unknown };
 
@@ -112,6 +114,9 @@ function mergePosts(
 }
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "sync", 150);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
   if (!isRedisConfigured()) {
     return NextResponse.json(
       { ok: false, error: "Redis yapılandırılmamış." },
@@ -120,7 +125,15 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as Record<string, unknown>;
+    const rawBody = await req.text();
+    if (rawBody.length > 3 * 1024 * 1024) {
+      return NextResponse.json(
+        { ok: false, error: "Veri boyutu sınırı aşıldı." },
+        { status: 413 }
+      );
+    }
+    const body = JSON.parse(rawBody) as Record<string, unknown>;
+    const updatedKeys: string[] = [];
     const existingDeleted =
       (await kvGetJson<string[]>("shared:deletedIds")) ?? [];
     const incomingDeleted = Array.isArray(body.deletedIds)
@@ -208,6 +221,12 @@ export async function POST(req: Request) {
         await kvSetJson(`shared:${key}`, incoming);
       })
     );
+    SHARED_KEYS.forEach((k) => {
+      if (body[k] !== undefined) updatedKeys.push(k);
+    });
+    if (updatedKeys.length > 0) {
+      emitRealtimeEvent({ type: "sync", keys: updatedKeys, ts: Date.now() });
+    }
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

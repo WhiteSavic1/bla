@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { isRedisConfigured, kvGetJson, kvSetJson } from "@/lib/kvStore";
+import { emitRealtimeEvent } from "@/lib/realtimeBus";
+import { checkRateLimit, rateLimitResponse } from "@/lib/security";
 
 export async function GET(req: Request) {
   if (!isRedisConfigured()) {
@@ -43,6 +45,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "room", 150);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
   if (!isRedisConfigured()) {
     return NextResponse.json({ ok: false }, { status: 503 });
   }
@@ -56,6 +61,11 @@ export async function POST(req: Request) {
         ? { ...body.listeningRoom, positionUpdatedAt: serverNow }
         : body.listeningRoom;
       await kvSetJson(key, stamped);
+      emitRealtimeEvent({
+        type: "room",
+        convId: String(convId || ""),
+        ts: serverNow,
+      });
       return NextResponse.json({
         ok: true,
         serverNow,

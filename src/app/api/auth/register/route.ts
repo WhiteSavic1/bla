@@ -5,8 +5,16 @@ import {
   kvSetJson,
   mergeById,
 } from "@/lib/kvStore";
+import {
+  attachSessionCookie,
+  checkRateLimit,
+  rateLimitResponse,
+} from "@/lib/security";
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "auth_register", 20);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
   if (!isRedisConfigured()) {
     return NextResponse.json(
       { ok: false, error: "Upstash Redis yapılandırılmamış." },
@@ -49,7 +57,11 @@ export async function POST(req: Request) {
       mergeById(profiles, [profile])
     );
 
-    return NextResponse.json({ ok: true, account, existing: false });
+    const res = NextResponse.json({ ok: true, account, existing: false });
+    return attachSessionCookie(res, {
+      userId: profile.id,
+      email: cleanEmail,
+    });
   } catch {
     return NextResponse.json(
       { ok: false, error: "Kayıt sırasında hata oluştu." },

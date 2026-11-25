@@ -1051,16 +1051,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fetchKeys(secondaryRotation[idx]);
       }
     };
-    const intervalMs = activeSection === "CHAT" ? 1800 : 2800;
+    const intervalMs = activeSection === "CHAT" ? 12000 : 18000;
     const interval = setInterval(loadRemote, intervalMs);
     const onFocus = () => fetchKeys([...primaryKeys, ...secondaryKeys]);
     window.addEventListener("focus", onFocus);
+
+    let es: EventSource | null = null;
+    if (typeof window !== "undefined" && typeof EventSource !== "undefined") {
+      try {
+        es = new EventSource(`${apiUrl}/api/events`);
+        es.addEventListener("sync", (ev) => {
+          try {
+            const payload = JSON.parse((ev as MessageEvent).data) as {
+              keys?: string[];
+            };
+            if (Array.isArray(payload.keys) && payload.keys.length > 0) {
+              fetchKeys(payload.keys);
+            }
+          } catch {
+            // ignore
+          }
+        });
+        es.addEventListener("room", (ev) => {
+          try {
+            const payload = JSON.parse((ev as MessageEvent).data) as {
+              convId?: string;
+            };
+            window.dispatchEvent(
+              new CustomEvent("satir_arasi_sse_room", {
+                detail: { convId: payload.convId || "" },
+              })
+            );
+          } catch {
+            // ignore
+          }
+        });
+      } catch {
+        // ignore SSE init errors
+      }
+    }
+
     return () => {
       active = false;
       clearTimeout(t1);
       clearTimeout(t2);
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      if (es) es.close();
     };
   }, [activeApiUrl, fallbackApiUrl, activeSection]);
 
@@ -1124,9 +1161,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await Promise.all(targetIds.map(fetchOneRoom));
     };
     pollRoom();
-    const roomPollMs = effectiveJoinedRoomConvId ? 1200 : 2500;
+    const onSseRoom = (ev: Event) => {
+      const cid = (ev as CustomEvent<{ convId?: string }>).detail?.convId;
+      if (cid && targetIds.includes(cid)) {
+        fetchOneRoom(cid);
+      }
+    };
+    window.addEventListener("satir_arasi_sse_room", onSseRoom);
+    const roomPollMs = effectiveJoinedRoomConvId ? 8000 : 12000;
     const t = setInterval(pollRoom, roomPollMs);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("satir_arasi_sse_room", onSseRoom);
+    };
   }, [isRemoteLoaded, effectiveJoinedRoomConvId, joinedRoomConvId, activeConversationId, activeSection, apiUrl]);
   useEffect(() => {
     try {

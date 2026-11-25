@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { isRedisConfigured, kvGetJson } from "@/lib/kvStore";
+import {
+  attachSessionCookie,
+  checkRateLimit,
+  rateLimitResponse,
+} from "@/lib/security";
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "auth_login", 20);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
   if (!isRedisConfigured()) {
     return NextResponse.json(
       { ok: false, error: "Upstash Redis yapılandırılmamış." },
@@ -18,7 +26,7 @@ export async function POST(req: Request) {
     const account = await kvGetJson<{
       email: string;
       password: string;
-      profile: unknown;
+      profile: { id?: string };
     }>(`accounts:${cleanEmail}`);
 
     if (!account || account.password !== password) {
@@ -28,7 +36,11 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, account });
+    const res = NextResponse.json({ ok: true, account });
+    return attachSessionCookie(res, {
+      userId: account.profile?.id || cleanEmail,
+      email: cleanEmail,
+    });
   } catch {
     return NextResponse.json(
       { ok: false, error: "Giriş sırasında hata oluştu." },

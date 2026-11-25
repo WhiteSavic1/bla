@@ -78,6 +78,31 @@ export async function kvGetJson<T = unknown>(key: string): Promise<T | null> {
   }
 }
 
+export async function kvMGetJson<T = unknown>(
+  keys: string[]
+): Promise<(T | null)[]> {
+  if (!isRedisConfigured() || keys.length === 0) {
+    return keys.map(() => null);
+  }
+  let raws: (string | null)[] = [];
+  if (REDIS_URL) {
+    const client = getRedisClient();
+    raws = await client.mget(...keys);
+  } else {
+    const res = await restCommand<(string | null)[]>(["MGET", ...keys]);
+    raws = Array.isArray(res) ? res : [];
+  }
+  return keys.map((_, idx) => {
+    const raw = raws[idx];
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  });
+}
+
 export async function kvSetJson(key: string, value: unknown): Promise<void> {
   if (!isRedisConfigured()) return;
   const serialized = JSON.stringify(value);
