@@ -617,7 +617,13 @@ export function ChatAndRoomView() {
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setShowNewChatPicker((prev) => !prev)}
+                onClick={() => {
+                  setShowNewChatPicker((prev) => {
+                    const next = !prev;
+                    if (next) setMobileTab("MESSAGES");
+                    return next;
+                  });
+                }}
                 className="flex items-center gap-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/25 transition"
               >
                 <Plus className="h-3 w-3" />
