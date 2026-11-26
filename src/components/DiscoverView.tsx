@@ -39,6 +39,7 @@ export function DiscoverView({
     requestConfirm,
     blockedUserIds,
     toggleBlockUser,
+    onlineUserIds,
   } = useApp();
 
   const [query, setQuery] = useState("");
@@ -164,8 +165,16 @@ export function DiscoverView({
                       </div>
                     )}
                     <div>
-                      <div className="text-sm font-semibold text-white group-hover:text-indigo-300">
-                        {user.nickname}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-white group-hover:text-indigo-300">
+                          {user.nickname}
+                        </span>
+                        {onlineUserIds.includes(user.id) && (
+                          <span
+                            title="Çevrimiçi"
+                            className="h-2 w-2 rounded-full bg-emerald-400 shrink-0"
+                          />
+                        )}
                       </div>
                       <div className="text-xs text-gray-400">
                         @{user.username}

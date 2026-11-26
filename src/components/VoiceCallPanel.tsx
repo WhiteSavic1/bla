@@ -230,6 +230,9 @@ export function VoiceCallPanel() {
   };
   const [callSeconds, setCallSeconds] = useState(0);
   const [mutedRingCallId, setMutedRingCallId] = useState<string | null>(null);
+  const [speakingIds, setSpeakingIds] = useState<Record<string, boolean>>({});
+  const [callPingMs, setCallPingMs] = useState<number | null>(null);
+  const [showPingMs, setShowPingMs] = useState(false);
 
   const peersRef = useRef<Map<string, PeerEntry>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -253,6 +256,132 @@ export function VoiceCallPanel() {
   const postChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const isInCallRef = useRef<boolean>(false);
   isInCallRef.current = isInCall;
+
+  // Konuşan kişi yeşil halka algılama (VAD) ve canlı WebRTC ping (ms) ölçümü
+  useEffect(() => {
+    if (!isInCall) {
+      setSpeakingIds({});
+      setCallPingMs(null);
+      return;
+    }
+
+    let localCtx: AudioContext | null = null;
+    let localAnalyser: AnalyserNode | null = null;
+    let localSrcStream: MediaStream | null = null;
+    const peerAnalysers = new Map<
+      string,
+      { stream: MediaStream; analyser: AnalyserNode; ctx: AudioContext }
+    >();
+    const buf = new Uint8Array(64);
+
+    const sampleLevel = (analyser: AnalyserNode): number => {
+      analyser.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const d = (buf[i] - 128) / 128;
+        sum += d * d;
+      }
+      return Math.sqrt(sum / buf.length);
+    };
+
+    const vadTimer = setInterval(() => {
+      const nextSpeaking: Record<string, boolean> = {};
+      const Ctor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+
+      if (!isMuted && rawMicStreamRef.current && Ctor) {
+        try {
+          if (localSrcStream !== rawMicStreamRef.current) {
+            localSrcStream = rawMicStreamRef.current;
+            if (!localCtx || localCtx.state === "closed") {
+              localCtx = new Ctor();
+            }
+            if (localCtx.state === "suspended") {
+              localCtx.resume().catch(() => {});
+            }
+            const src = localCtx.createMediaStreamSource(localSrcStream);
+            localAnalyser = localCtx.createAnalyser();
+            localAnalyser.fftSize = 128;
+            src.connect(localAnalyser);
+          }
+          if (localAnalyser && sampleLevel(localAnalyser) > 0.03) {
+            nextSpeaking[currentUser.id] = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!isDeafened && Ctor) {
+        peersRef.current.forEach((entry, pid) => {
+          const stream = entry.audioEl.srcObject as MediaStream | null;
+          if (!stream || stream.getAudioTracks().length === 0) return;
+          try {
+            let rec = peerAnalysers.get(pid);
+            if (!rec || rec.stream !== stream) {
+              const ctx =
+                entry.audioCtx && entry.audioCtx.state !== "closed"
+                  ? entry.audioCtx
+                  : new Ctor();
+              if (ctx.state === "suspended") ctx.resume().catch(() => {});
+              const src = ctx.createMediaStreamSource(stream);
+              const analyser = ctx.createAnalyser();
+              analyser.fftSize = 128;
+              src.connect(analyser);
+              rec = { stream, analyser, ctx };
+              peerAnalysers.set(pid, rec);
+            }
+            if (sampleLevel(rec.analyser) > 0.03) {
+              nextSpeaking[pid] = true;
+            }
+          } catch {
+            // ignore
+          }
+        });
+      }
+
+      setSpeakingIds((prev) => {
+        const pk = Object.keys(prev);
+        const nk = Object.keys(nextSpeaking);
+        if (pk.length === nk.length && nk.every((k) => prev[k])) return prev;
+        return nextSpeaking;
+      });
+    }, 150);
+
+    const pingTimer = setInterval(async () => {
+      let bestRttMs: number | null = null;
+      for (const entry of peersRef.current.values()) {
+        try {
+          const stats = await entry.pc.getStats();
+          stats.forEach((rep) => {
+            if (
+              rep.type === "candidate-pair" &&
+              rep.state === "succeeded" &&
+              typeof rep.currentRoundTripTime === "number"
+            ) {
+              const ms = Math.round(rep.currentRoundTripTime * 1000);
+              if (bestRttMs === null || ms < bestRttMs) {
+                bestRttMs = ms;
+              }
+            }
+          });
+        } catch {
+          // ignore
+        }
+      }
+      setCallPingMs(bestRttMs);
+    }, 2500);
+
+    return () => {
+      clearInterval(vadTimer);
+      clearInterval(pingTimer);
+      if (localCtx && localCtx.state !== "closed") {
+        localCtx.close().catch(() => {});
+      }
+    };
+  }, [isInCall, isMuted, isDeafened, currentUser.id]);
   const isDeafenedRef = useRef<boolean>(false);
   isDeafenedRef.current = isDeafened;
   const volumeRef = useRef<number>(volume);
@@ -1872,6 +2001,48 @@ export function VoiceCallPanel() {
                 ? "Katılım bekleniyor..."
                 : "Bağlanıyor..."}
             </span>
+            {peerConnected && (
+              <button
+                type="button"
+                onClick={() => setShowPingMs((v) => !v)}
+                title={
+                  callPingMs !== null
+                    ? `Bağlantı gecikmesi: ${callPingMs} ms`
+                    : "Gecikme ölçülüyor..."
+                }
+                className="group inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-[10px] font-medium text-gray-200 hover:border-emerald-400/40 shrink-0"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    callPingMs === null
+                      ? "bg-gray-400"
+                      : callPingMs <= 120
+                      ? "bg-emerald-400"
+                      : callPingMs <= 250
+                      ? "bg-amber-400"
+                      : "bg-rose-500"
+                  }`}
+                />
+                <span>
+                  {callPingMs === null
+                    ? "Ölçülüyor"
+                    : callPingMs <= 120
+                    ? "İyi"
+                    : callPingMs <= 250
+                    ? "Orta"
+                    : "Zayıf"}
+                </span>
+                {callPingMs !== null && (
+                  <span
+                    className={`${
+                      showPingMs ? "inline" : "hidden group-hover:inline"
+                    } tabular-nums text-emerald-300`}
+                  >
+                    · {callPingMs} ms
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -2149,6 +2320,7 @@ export function VoiceCallPanel() {
             const pDeaf =
               p.id === currentUser.id ? isDeafened : Boolean(p.isDeafened);
             const pVol = peerVolumes[p.id] ?? 140;
+            const isSpeaking = Boolean(speakingIds[p.id]) && !pMuted;
             return (
               <span
                 key={p.id}
@@ -2157,9 +2329,17 @@ export function VoiceCallPanel() {
                     setActivePeerVolId((prev) => (prev === p.id ? null : p.id));
                   }
                 }}
-                className="flex flex-wrap items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-200 cursor-pointer sm:cursor-default"
+                className={`flex flex-wrap items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium text-emerald-200 cursor-pointer sm:cursor-default transition-all ${
+                  isSpeaking
+                    ? "border-emerald-400 bg-emerald-500/25 ring-2 ring-emerald-400/70 shadow-[0_0_12px_rgba(52,211,153,0.45)]"
+                    : "border-emerald-500/30 bg-emerald-500/15"
+                }`}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    isSpeaking ? "bg-emerald-300 animate-ping" : "bg-emerald-400"
+                  }`}
+                />
                 <span>
                   {p.nickname}
                   {p.id === currentUser.id ? " (Sen)" : ""}

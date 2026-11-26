@@ -188,6 +188,38 @@ export function HamburgerDrawer() {
 
         {activeSection === "FEED" && (
           <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setThemeMode(themeMode === "LIGHT" ? "DARK" : "LIGHT")
+              }
+              title={themeMode === "LIGHT" ? "Karanlık Tema" : "Açık Tema"}
+              aria-label="Tema Değiştir"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-[#151821]/85 text-gray-200 shadow-lg backdrop-blur-md transition hover:bg-[#1E2330] active:scale-95"
+            >
+              {themeMode === "LIGHT" ? (
+                <Moon className="h-4 w-4 text-indigo-300" />
+              ) : (
+                <Sun className="h-4 w-4 text-amber-300" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(true);
+                setShowNotifs(true);
+              }}
+              title="Bildirimler"
+              aria-label="Bildirimler"
+              className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-[#151821]/85 text-gray-200 shadow-lg backdrop-blur-md transition hover:bg-[#1E2330] active:scale-95"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadNotifs > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                  {unreadNotifs}
+                </span>
+              )}
+            </button>
             {isGuest && !hasEnteredNickname && (
               <button
                 onClick={() => setShowNicknameModal(true)}

@@ -16,6 +16,9 @@ import {
   Flag,
   Trash2,
   Image as ImageIcon,
+  Pencil,
+  Maximize2,
+  Check,
 } from "lucide-react";
 import { FontStyle, HighlightColor, Post, UserProfile } from "@/types/persona";
 import { useApp } from "@/context/AppContext";
@@ -136,6 +139,7 @@ export function PostCard({ post }: { post: Post }) {
     startMessageRequest,
     submitReport,
     deletePost,
+    editPost,
     isAdmin,
     showToast,
     requestConfirm,
@@ -152,6 +156,10 @@ export function PostCard({ post }: { post: Post }) {
   const [gifUrlInput, setGifUrlInput] = useState("");
   const [showHighlightInput, setShowHighlightInput] = useState(false);
   const [highlightText, setHighlightText] = useState("");
+  const [isEditingPost, setIsEditingPost] = useState(false);
+  const [editTitle, setEditTitle] = useState(post.title || "");
+  const [editContent, setEditContent] = useState(post.content);
+  const [showReadingModal, setShowReadingModal] = useState(false);
   const [highlightColor, setHighlightColor] =
     useState<HighlightColor>("yellow");
   const [showMsgRequest, setShowMsgRequest] = useState(false);
@@ -359,25 +367,93 @@ export function PostCard({ post }: { post: Post }) {
           </div>
         </button>
 
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-gray-300">
-          {typeBadge[post.type]}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowReadingModal(true)}
+            title="Okuma Modu"
+            className="rounded-full border border-white/10 bg-white/5 p-1.5 text-gray-300 hover:bg-white/15 hover:text-white transition"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+          {isOwnPost && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditTitle(post.title || "");
+                setEditContent(post.content);
+                setIsEditingPost((v) => !v);
+              }}
+              title="Gönderiyi Düzenle"
+              className="rounded-full border border-white/10 bg-white/5 p-1.5 text-gray-300 hover:bg-indigo-500/20 hover:text-indigo-300 transition"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-gray-300">
+            {typeBadge[post.type]}
+          </span>
+        </div>
       </div>
 
-      {post.title && (
-        <h2 className="mt-4 text-lg sm:text-xl font-semibold text-white break-words">
-          {post.title}
-        </h2>
+      {isEditingPost ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!editContent.trim()) return;
+            editPost(post.id, { title: editTitle, content: editContent });
+            setIsEditingPost(false);
+          }}
+          className="mt-4 space-y-2.5 rounded-xl border border-indigo-500/30 bg-[#0F1115]/90 p-3"
+        >
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Başlık (isteğe bağlı)..."
+            className="w-full rounded-lg border border-white/10 bg-[#151821] px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          />
+          <textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            rows={4}
+            className="w-full rounded-lg border border-white/10 bg-[#151821] px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsEditingPost(false)}
+              className="rounded-lg px-3 py-1.5 text-xs text-gray-400 hover:text-white"
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
+            >
+              <Check className="h-3.5 w-3.5" />
+              <span>Kaydet</span>
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          {post.title && (
+            <h2 className="mt-4 text-lg sm:text-xl font-semibold text-white break-words">
+              {post.title}
+            </h2>
+          )}
+
+          {/* İçerik (Yazarın Parçalı Yazı Stilleri + Yakın Arkadaşların Altı Çizilileri) */}
+          <div
+            className={`mt-3 whitespace-pre-line break-words text-gray-200 leading-relaxed ${getFontClass(
+              post.fontStyle
+            )}`}
+          >
+            {renderStyledAndHighlightedContent(post.content, visibleHighlights)}
+          </div>
+        </>
       )}
-
-      {/* İçerik (Yazarın Parçalı Yazı Stilleri + Yakın Arkadaşların Altı Çizilileri) */}
-      <div
-        className={`mt-3 whitespace-pre-line break-words text-gray-200 leading-relaxed ${getFontClass(
-          post.fontStyle
-        )}`}
-      >
-        {renderStyledAndHighlightedContent(post.content, visibleHighlights)}
-      </div>
 
       {(post.bookTitle || post.bookAuthor) && (
         <div className="mt-3 flex items-center gap-2 text-xs text-indigo-300/90">
@@ -1075,6 +1151,62 @@ export function PostCard({ post }: { post: Post }) {
               Gönder
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Okuma Modu (Tam Ekran Rahat Okuma) */}
+      {showReadingModal && (
+        <div
+          onClick={() => setShowReadingModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl max-h-[88dvh] overflow-y-auto rounded-2xl border border-white/15 bg-[#12151D] p-6 sm:p-8 shadow-2xl space-y-5"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+              <div>
+                <div className="text-xs font-semibold text-indigo-300">
+                  {author.nickname} · @{author.username}
+                </div>
+                <div className="text-[11px] text-gray-400">
+                  {typeBadge[post.type]} ·{" "}
+                  {formatRelativeTime(post.createdAtMs, post.createdAt)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReadingModal(false)}
+                className="rounded-xl border border-white/10 bg-white/5 p-2 text-gray-300 hover:bg-white/15 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {post.title && (
+              <h2 className="text-2xl font-bold text-white break-words">
+                {post.title}
+              </h2>
+            )}
+
+            <div
+              className={`whitespace-pre-line break-words text-base sm:text-lg text-gray-100 leading-loose ${getFontClass(
+                post.fontStyle
+              )}`}
+            >
+              {renderStyledAndHighlightedContent(post.content, visibleHighlights)}
+            </div>
+
+            {(post.bookTitle || post.bookAuthor) && (
+              <div className="flex items-center gap-2 border-t border-white/10 pt-4 text-xs text-indigo-300">
+                <BookOpen className="h-4 w-4" />
+                <span>
+                  {post.bookTitle}
+                  {post.bookAuthor ? ` — ${post.bookAuthor}` : ""}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </article>

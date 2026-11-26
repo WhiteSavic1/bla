@@ -104,6 +104,7 @@ export interface UserProfile {
   username: string;
   nickname: string;
   avatarUrl?: string;
+  bannerTheme?: string;
   bio: string;
   currentMood: string;
   featuredQuote?: BookQuote;
@@ -163,6 +164,7 @@ export interface Conversation {
   initiatorId: string;
   originPostId?: string;
   originPostPreview?: string;
+  pinnedMessage?: { id: string; senderName: string; body: string } | null;
   messages: ChatMessage[];
 }
 

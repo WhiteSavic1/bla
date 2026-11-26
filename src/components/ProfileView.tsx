@@ -50,6 +50,8 @@ export function ProfileView() {
     requestConfirm,
     blockedUserIds,
     toggleBlockUser,
+    onlineUserIds,
+    updateBannerTheme,
   } = useApp();
 
   const profileAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -354,28 +356,109 @@ export function ProfileView() {
       })()}
 
       {/* Ana Profil Kartı */}
-      <div className="rounded-2xl border border-white/10 bg-[#151821]/90 p-6 shadow-xl backdrop-blur-md">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt={user.nickname}
-              className="h-20 w-20 rounded-2xl object-cover border-2 border-indigo-500/40 shadow-lg"
-            />
-          ) : (
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-indigo-600/30 text-2xl font-bold text-indigo-200 border border-indigo-500/40">
-              {user.nickname.slice(0, 2).toUpperCase()}
-            </div>
-          )}
+      {(() => {
+        const bannerThemes: Record<string, string> = {
+          indigo: "from-indigo-600/45 via-purple-600/30 to-transparent",
+          emerald: "from-emerald-600/45 via-teal-600/30 to-transparent",
+          rose: "from-rose-600/45 via-pink-600/30 to-transparent",
+          amber: "from-amber-500/45 via-orange-600/30 to-transparent",
+          violet: "from-violet-600/45 via-fuchsia-600/30 to-transparent",
+          slate: "from-slate-500/45 via-zinc-600/30 to-transparent",
+        };
+        const activeBanner = bannerThemes[user.bannerTheme || "indigo"] || bannerThemes.indigo;
+        const isOnline = isOwnProfile || onlineUserIds.includes(user.id);
+        const totalLikes = userPosts.reduce((acc, p) => acc + p.likes.length, 0);
+        const badges = [
+          userPosts.length >= 1 ? { label: "İlk Satır", cls: "bg-indigo-500/20 text-indigo-200 border-indigo-500/30" } : null,
+          userPosts.length >= 5 ? { label: "Aktif Yazar", cls: "bg-amber-500/20 text-amber-200 border-amber-500/30" } : null,
+          user.profileAudio || user.pinnedTrack ? { label: "Müzik Tutkunu", cls: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30" } : null,
+          totalLikes >= 5 ? { label: "Popüler", cls: "bg-rose-500/20 text-rose-200 border-rose-500/30" } : null,
+        ].filter((b): b is { label: string; cls: string } => Boolean(b));
 
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-bold text-white">{user.nickname}</h1>
+        return (
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#151821]/90 p-6 shadow-xl backdrop-blur-md">
+            <div className={`pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b ${activeBanner}`} />
+            {isOwnProfile && (
+              <div className="relative mb-3 flex items-center justify-end gap-1.5">
+                <span className="text-[10px] text-gray-300/80 mr-1">Kapak:</span>
+                {(
+                  [
+                    { id: "indigo", dot: "bg-indigo-500" },
+                    { id: "emerald", dot: "bg-emerald-500" },
+                    { id: "rose", dot: "bg-rose-500" },
+                    { id: "amber", dot: "bg-amber-500" },
+                    { id: "violet", dot: "bg-violet-500" },
+                    { id: "slate", dot: "bg-slate-400" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => updateBannerTheme(t.id)}
+                    title={`Kapak: ${t.id}`}
+                    className={`h-4 w-4 rounded-full ${t.dot} transition ${
+                      (user.bannerTheme || "indigo") === t.id
+                        ? "ring-2 ring-white scale-110"
+                        : "opacity-70 hover:opacity-100"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+            <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.nickname}
+                  className="h-20 w-20 rounded-2xl object-cover border-2 border-indigo-500/40 shadow-lg"
+                />
+              ) : (
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-indigo-600/30 text-2xl font-bold text-indigo-200 border border-indigo-500/40">
+                  {user.nickname.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-2xl font-bold text-white">{user.nickname}</h1>
+                  {isOnline && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Çevrimiçi
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400">@{user.username}</div>
+                <p className="mt-2.5 text-sm text-gray-300">{user.bio}</p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-300">
+                  <span>
+                    <strong className="text-white">{userPosts.length}</strong> Paylaşım
+                  </span>
+                  <span>
+                    <strong className="text-white">{totalLikes}</strong> Beğeni
+                  </span>
+                  {isOwnProfile && (
+                    <span>
+                      <strong className="text-white">{friendIds.length}</strong> Arkadaş
+                    </span>
+                  )}
+                </div>
+
+                {badges.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {badges.map((b) => (
+                      <span
+                        key={b.label}
+                        className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${b.cls}`}
+                      >
+                        {b.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="text-xs text-gray-400">@{user.username}</div>
-            <p className="mt-2.5 text-sm text-gray-300">{user.bio}</p>
-          </div>
-        </div>
 
         {/* Kitaptan Altı Çizili Cümle */}
         {user.featuredQuote && (
@@ -426,7 +509,9 @@ export function ProfileView() {
             </button>
           </div>
         )}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Paylaşımlar */}
       <div className="space-y-4">

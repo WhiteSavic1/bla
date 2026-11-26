@@ -14,6 +14,8 @@ import {
   VolumeX,
   Users,
   MessageSquare,
+  Megaphone,
+  Search,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 
@@ -50,6 +52,7 @@ export function AdminPanelView() {
     openProfile,
     requestConfirm,
     setActiveSection,
+    showToast,
   } = useApp();
 
   const [pwdInput, setPwdInput] = useState("");
@@ -64,6 +67,9 @@ export function AdminPanelView() {
   const [pwdChangeMsg, setPwdChangeMsg] = useState<string | null>(null);
   const [ticketPinInputs, setTicketPinInputs] = useState<Record<string, string>>({});
   const [ticketNoteInputs, setTicketNoteInputs] = useState<Record<string, string>>({});
+  const [userSearch, setUserSearch] = useState("");
+  const [announceTitle, setAnnounceTitle] = useState("");
+  const [announceBody, setAnnounceBody] = useState("");
 
   if (!isAdmin) {
     return (
@@ -157,6 +163,59 @@ export function AdminPanelView() {
           </div>
         </div>
       </div>
+
+      {/* 0. Duyuru Gönder */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!announceBody.trim()) return;
+          fetch("/api/typing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              convId: "__announcement__",
+              userId: currentUser.id,
+              nickname: announceTitle.trim() || "Sistem Duyurusu",
+            }),
+          }).catch(() => {});
+          showToast(
+            `${announceTitle.trim() || "Duyuru"}: ${announceBody.trim()}`
+          );
+          setAnnounceTitle("");
+          setAnnounceBody("");
+        }}
+        className="rounded-2xl border border-indigo-500/25 bg-[#151821]/90 p-5 space-y-3"
+      >
+        <div className="flex items-center gap-2 text-indigo-300">
+          <Megaphone className="h-4 w-4" />
+          <h2 className="text-sm font-semibold text-white">Hızlı Duyuru</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input
+            type="text"
+            value={announceTitle}
+            onChange={(e) => setAnnounceTitle(e.target.value)}
+            placeholder="Duyuru başlığı..."
+            className="rounded-xl border border-white/10 bg-[#0F1115] px-3.5 py-2 text-xs text-white focus:outline-none"
+          />
+          <input
+            type="text"
+            value={announceBody}
+            onChange={(e) => setAnnounceBody(e.target.value)}
+            placeholder="Duyuru mesajı..."
+            className="sm:col-span-2 rounded-xl border border-white/10 bg-[#0F1115] px-3.5 py-2 text-xs text-white focus:outline-none"
+          />
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={!announceBody.trim()}
+            className="rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+          >
+            Duyuruyu Yayınla
+          </button>
+        </div>
+      </form>
 
       {/* 1. Destek Talepleri (Ticketlar) */}
       <div className="rounded-2xl border border-white/10 bg-[#151821]/90 p-6 space-y-4">
@@ -649,15 +708,36 @@ export function AdminPanelView() {
 
       {/* 4. Kullanıcı Moderasyonu (Yasaklama & Susturma) */}
       <div className="rounded-2xl border border-white/10 bg-[#151821]/90 p-6 space-y-4">
-        <div className="flex items-center gap-2 text-rose-300">
-          <Users className="h-4 w-4" />
-          <h2 className="text-sm font-semibold text-white">
-            Kullanıcı Moderasyonu ({users.filter((u) => u.id !== currentUser.id).length})
-          </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-rose-300">
+            <Users className="h-4 w-4" />
+            <h2 className="text-sm font-semibold text-white">
+              Kullanıcı Moderasyonu ({users.filter((u) => u.id !== currentUser.id).length})
+            </h2>
+          </div>
+          <div className="relative w-full sm:w-56">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="Kullanıcı ara..."
+              className="w-full rounded-lg border border-white/10 bg-[#0F1115] pl-8 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
         </div>
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {users
             .filter((u) => u.id !== currentUser.id)
+            .filter((u) => {
+              const q = userSearch.trim().toLocaleLowerCase("tr-TR");
+              if (!q) return true;
+              return (
+                u.nickname.toLocaleLowerCase("tr-TR").includes(q) ||
+                u.username.toLocaleLowerCase("tr-TR").includes(q) ||
+                (u.email || "").toLocaleLowerCase("tr-TR").includes(q)
+              );
+            })
             .map((u) => {
               const isBanned = bannedUserIds.includes(u.id);
               const isMuted = mutedUserIds.includes(u.id);

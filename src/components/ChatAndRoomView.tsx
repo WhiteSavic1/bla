@@ -30,6 +30,7 @@ import {
   Shuffle,
   MousePointerClick,
   AlignLeft,
+  Pin,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import {
@@ -71,6 +72,7 @@ export function ChatAndRoomView() {
     sendChatMessage,
     editChatMessage,
     deleteChatMessage,
+    pinChatMessage,
     toggleMessageReaction,
     playGlobalTrack,
     openProfile,
@@ -143,6 +145,75 @@ export function ChatAndRoomView() {
     plain: string | null;
   } | null>(null);
   const activeLyricRef = useRef<HTMLButtonElement | null>(null);
+  const [typingByConv, setTypingByConv] = useState<
+    Record<string, { userId: string; nickname: string; expiresAt: number }[]>
+  >({});
+  const lastTypingSentAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    const onTyping = (ev: Event) => {
+      const detail = (
+        ev as CustomEvent<{
+          convId?: string;
+          userId?: string;
+          nickname?: string;
+        }>
+      ).detail;
+      if (!detail?.convId || !detail.userId || detail.userId === currentUser.id) {
+        return;
+      }
+      const now = Date.now();
+      setTypingByConv((prev) => {
+        const list = (prev[detail.convId!] || []).filter(
+          (x) => x.expiresAt > now && x.userId !== detail.userId
+        );
+        return {
+          ...prev,
+          [detail.convId!]: [
+            ...list,
+            {
+              userId: detail.userId!,
+              nickname: detail.nickname || "Üye",
+              expiresAt: now + 3500,
+            },
+          ],
+        };
+      });
+    };
+    window.addEventListener("satir_arasi_sse_typing", onTyping);
+    const prune = setInterval(() => {
+      const now = Date.now();
+      setTypingByConv((prev) => {
+        let changed = false;
+        const next: typeof prev = {};
+        for (const [cid, list] of Object.entries(prev)) {
+          const alive = list.filter((x) => x.expiresAt > now);
+          if (alive.length !== list.length) changed = true;
+          if (alive.length > 0) next[cid] = alive;
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => {
+      window.removeEventListener("satir_arasi_sse_typing", onTyping);
+      clearInterval(prune);
+    };
+  }, [currentUser.id]);
+
+  const notifyTyping = (convId: string) => {
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current < 2000) return;
+    lastTypingSentAtRef.current = now;
+    fetch("/api/typing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        convId,
+        userId: currentUser.id,
+        nickname: currentUser.nickname,
+      }),
+    }).catch(() => {});
+  };
   const [localCallNotices, setLocalCallNotices] = useState<
     { id: string; convId: string; text: string; createdAt: string }[]
   >([]);
@@ -1035,6 +1106,38 @@ export function ChatAndRoomView() {
                 </div>
               </div>
 
+              {/* Sabitlenen Mesaj Banner */}
+              {activeConv.pinnedMessage && (
+                <div className="flex items-center justify-between gap-2 border-b border-indigo-500/25 bg-indigo-500/10 px-4 py-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById(
+                        `msg-${activeConv.pinnedMessage!.id}`
+                      );
+                      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left hover:opacity-85"
+                  >
+                    <Pin className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+                    <span className="truncate text-indigo-100">
+                      <span className="font-semibold text-indigo-300">
+                        {activeConv.pinnedMessage.senderName}:{" "}
+                      </span>
+                      {activeConv.pinnedMessage.body}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    title="Sabitlemeyi Kaldır"
+                    onClick={() => pinChatMessage(activeConv.id, null)}
+                    className="rounded p-1 text-gray-400 hover:bg-white/10 hover:text-white shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Mesaj İsteği Onay Çubuğu */}
               {activeConv.status === "PENDING" &&
                 activeConv.initiatorId !== currentUser.id && (
@@ -1102,6 +1205,7 @@ export function ChatAndRoomView() {
                   return (
                     <div
                       key={m.id}
+                      id={`msg-${m.id}`}
                       className={`group flex flex-col ${
                         isMe ? "items-end" : "items-start"
                       } ${isGroupedWithPrev ? "mt-0.5" : idx === 0 ? "" : "mt-3"}`}
@@ -1163,6 +1267,36 @@ export function ChatAndRoomView() {
                                   className="rounded p-1 text-gray-400 hover:bg-white/10 hover:text-white"
                                 >
                                   <Reply className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={
+                                    activeConv.pinnedMessage?.id === m.id
+                                      ? "Sabitlemeyi Kaldır"
+                                      : "Mesajı Sabitle"
+                                  }
+                                  onClick={() =>
+                                    pinChatMessage(
+                                      activeConv.id,
+                                      activeConv.pinnedMessage?.id === m.id
+                                        ? null
+                                        : {
+                                            id: m.id,
+                                            senderName,
+                                            body:
+                                              m.body ||
+                                              m.attachment?.name ||
+                                              "Medya",
+                                          }
+                                    )
+                                  }
+                                  className={`rounded p-1 transition ${
+                                    activeConv.pinnedMessage?.id === m.id
+                                      ? "text-indigo-400 bg-indigo-500/20"
+                                      : "text-gray-400 hover:bg-white/10 hover:text-white"
+                                  }`}
+                                >
+                                  <Pin className="h-3.5 w-3.5" />
                                 </button>
                                 {isMe && (
                                   <>
@@ -1440,6 +1574,17 @@ export function ChatAndRoomView() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Yazıyor... Göstergesi */}
+              {activeConv &&
+                (typingByConv[activeConv.id] || []).length > 0 && (
+                  <div className="px-4 py-1 text-[11px] italic text-emerald-300/90">
+                    {(typingByConv[activeConv.id] || [])
+                      .map((t) => t.nickname)
+                      .join(", ")}{" "}
+                    yazıyor...
+                  </div>
+                )}
+
               {/* Mesaj, Dosya & Şarkı Gönderme Kutusu */}
               <form
                 onSubmit={handleSend}
@@ -1597,7 +1742,12 @@ export function ChatAndRoomView() {
                   <input
                     type="text"
                     value={msgText}
-                    onChange={(e) => setMsgText(e.target.value)}
+                    onChange={(e) => {
+                      setMsgText(e.target.value);
+                      if (e.target.value.trim() && activeConv) {
+                        notifyTyping(activeConv.id);
+                      }
+                    }}
                     onPaste={handleChatPaste}
                     placeholder="Bir mesaj yaz veya GIF/fotoğraf yapıştır..."
                     className="flex-1 rounded-xl border border-white/10 bg-[#0F1115] px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"

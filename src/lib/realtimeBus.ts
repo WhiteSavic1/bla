@@ -3,7 +3,8 @@ import { EventEmitter } from "events";
 export type RealtimeEvent =
   | { type: "sync"; keys: string[]; ts: number }
   | { type: "room"; convId: string; ts: number }
-  | { type: "call"; convId: string; ts: number };
+  | { type: "call"; convId: string; ts: number }
+  | { type: "typing"; convId: string; userId: string; nickname: string; ts: number };
 
 const globalForBus = globalThis as unknown as {
   __personaRealtimeBus?: EventEmitter;

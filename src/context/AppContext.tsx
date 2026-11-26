@@ -187,7 +187,10 @@ interface AppContextValue {
     >
   ) => void;
   deletePost: (postId: string) => void;
+  editPost: (postId: string, updates: { title?: string; content: string }) => void;
   publishDraft: (postId: string) => void;
+  onlineUserIds: string[];
+  updateBannerTheme: (themeId: string) => void;
   toggleLike: (postId: string) => void;
   toggleSave: (postId: string) => void;
   addComment: (
@@ -284,6 +287,10 @@ interface AppContextValue {
   ) => void;
   editChatMessage: (convId: string, msgId: string, newBody: string) => void;
   deleteChatMessage: (convId: string, msgId: string) => void;
+  pinChatMessage: (
+    convId: string,
+    pinned: Conversation["pinnedMessage"]
+  ) => void;
   toggleMessageReaction: (convId: string, msgId: string, emoji: string) => void;
 
   listeningRoom: ListeningRoomState;
@@ -456,6 +463,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [globalQueueIndex, setGlobalQueueIndex] = useState<number>(-1);
   const [isGlobalPlaying, setIsGlobalPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [globalPlayMode, setGlobalPlayMode] = useState<PlaybackMode>("SEQUENTIAL");
   const [roomPlayMode, setRoomPlayMode] = useState<PlaybackMode>("SEQUENTIAL");
   const [volume, setVolumeState] = useState<number>(75);
@@ -1082,6 +1090,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               new CustomEvent("satir_arasi_sse_room", {
                 detail: { convId: payload.convId || "" },
               })
+            );
+          } catch {
+            // ignore
+          }
+        });
+        es.addEventListener("typing", (ev) => {
+          try {
+            const payload = JSON.parse((ev as MessageEvent).data) as {
+              convId?: string;
+              userId?: string;
+              nickname?: string;
+              ts?: number;
+            };
+            window.dispatchEvent(
+              new CustomEvent("satir_arasi_sse_typing", { detail: payload })
             );
           } catch {
             // ignore
@@ -2406,6 +2429,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast("Paylaşımın silindi.");
   };
 
+  const editPost = (
+    postId: string,
+    updates: { title?: string; content: string }
+  ) => {
+    const cleanContent = updates.content.trim();
+    if (!cleanContent) return;
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId && p.authorId === currentUser.id
+          ? {
+              ...p,
+              title: updates.title?.trim() || undefined,
+              content: cleanContent,
+            }
+          : p
+      )
+    );
+    showToast("Paylaşım güncellendi.");
+  };
+
+  const updateBannerTheme = (themeId: string) => {
+    const updated: UserProfile = { ...currentUser, bannerTheme: themeId };
+    setRegisteredProfiles((prev) =>
+      prev.map((u) => (u.id === currentUser.id ? updated : u))
+    );
+    showToast("Profil kapak teması güncellendi.");
+  };
+
+  useEffect(() => {
+    if (!currentUser.id || currentUser.id === "u_me") return;
+    let active = true;
+    const ping = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const res = await fetch(`${activeApiUrl || fallbackApiUrl || ""}/api/presence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: currentUser.id }),
+        });
+        if (!res.ok || !active) return;
+        const data = (await res.json()) as { onlineUserIds?: string[] };
+        if (Array.isArray(data.onlineUserIds)) {
+          setOnlineUserIds(data.onlineUserIds);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    ping();
+    const t = setInterval(ping, 20_000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [currentUser.id, activeApiUrl, fallbackApiUrl]);
+
   const createPost = (
     post: Omit<
       Post,
@@ -3292,6 +3371,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast("Mesaj silindi.");
   };
 
+  const pinChatMessage = (
+    convId: string,
+    pinned: Conversation["pinnedMessage"]
+  ) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, pinnedMessage: pinned } : c))
+    );
+    showToast(pinned ? "Mesaj sohbete sabitlendi." : "Sabitlenen mesaj kaldırıldı.");
+  };
+
   const toggleMessageReaction = (
     convId: string,
     msgId: string,
@@ -3864,7 +3953,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         savedPostIds,
         createPost,
         deletePost,
+        editPost,
         publishDraft,
+        onlineUserIds,
+        updateBannerTheme,
         toggleLike,
         toggleSave,
         addComment,
@@ -3921,6 +4013,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         sendChatMessage,
         editChatMessage,
         deleteChatMessage,
+        pinChatMessage,
         toggleMessageReaction,
         listeningRoom,
         joinedRoomConvId: effectiveJoinedRoomConvId,

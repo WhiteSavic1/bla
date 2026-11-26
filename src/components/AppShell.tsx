@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Search, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ArrowUp, Search, X } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { MOOD_TAGS } from "@/lib/constants";
 import { HamburgerDrawer } from "./HamburgerDrawer";
@@ -39,6 +39,16 @@ export function AppShell() {
   const [feedScope, setFeedScope] = useState<"GENEL" | "FRIENDS">("GENEL");
   const [moodFilter, setMoodFilter] = useState<string>("ALL");
   const [tagSearchInput, setTagSearchInput] = useState<string>("");
+  const [feedSort, setFeedSort] = useState<"NEWEST" | "POPULAR" | "MUSIC">("NEWEST");
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowScrollTop(window.scrollY > 360);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const allFeedTags = Array.from(
     new Set([
@@ -86,6 +96,22 @@ export function AppShell() {
     );
   });
 
+  const sortedFeedPosts = React.useMemo(() => {
+    let list = filteredPosts;
+    if (feedSort === "MUSIC") {
+      list = list.filter((p) => Boolean(p.attachedTrack));
+    } else if (feedSort === "POPULAR") {
+      list = [...list].sort(
+        (a, b) =>
+          b.likes.length * 2 +
+          b.comments.length +
+          b.repostedBy.length -
+          (a.likes.length * 2 + a.comments.length + a.repostedBy.length)
+      );
+    }
+    return list;
+  }, [filteredPosts, feedSort]);
+
   const savedPosts = posts.filter((p) => savedPostIds.includes(p.id));
   const isFixedViewportSection = activeSection === "CHAT";
 
@@ -132,8 +158,8 @@ export function AppShell() {
 
         {activeSection === "FEED" && (
           <main className="mx-auto w-full min-w-0 max-w-3xl px-3 sm:px-4 pt-18 pb-28 space-y-5">
-            {/* Akış Sekmeleri: Sol Üstte Genel | Arkadaşlar */}
-            <div className="flex items-center justify-start">
+            {/* Akış Sekmeleri: Genel | Arkadaşlar + Sıralama */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-[#151821]/90 p-1 backdrop-blur-md">
                 <button
                   type="button"
@@ -157,6 +183,29 @@ export function AppShell() {
                 >
                   Arkadaşlar
                 </button>
+              </div>
+
+              <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-[#151821]/90 p-1 backdrop-blur-md">
+                {(
+                  [
+                    { id: "NEWEST", label: "En Yeni" },
+                    { id: "POPULAR", label: "Popüler" },
+                    { id: "MUSIC", label: "Şarkılı" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFeedSort(tab.id)}
+                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
+                      feedSort === tab.id
+                        ? "bg-emerald-500 text-black font-semibold shadow"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -277,12 +326,12 @@ export function AppShell() {
             </div>
 
             {/* Tam Ekran Akış Kartları */}
-            {filteredPosts.length === 0 ? (
+            {sortedFeedPosts.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-[#151821]/80 p-8 text-center text-sm text-gray-400">
-                Bu ruh halinde henüz paylaşım yok. İlk paylaşımı sen yap!
+                Bu filtrede henüz paylaşım yok. İlk paylaşımı sen yap!
               </div>
             ) : (
-              filteredPosts.map((post) => (
+              sortedFeedPosts.map((post) => (
                 <PostCard key={post.id} post={post} />
               ))
             )}
@@ -326,6 +375,18 @@ export function AppShell() {
         <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-indigo-500/40 bg-[#151821]/95 px-4 py-2.5 text-xs font-medium text-white shadow-2xl backdrop-blur-md">
           {toastMessage}
         </div>
+      )}
+
+      {showScrollTop && activeSection !== "CHAT" && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          title="Yukarı Çık"
+          aria-label="Yukarı Çık"
+          className="fixed bottom-5 right-5 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-[#151821]/90 text-white shadow-xl backdrop-blur-md transition hover:bg-indigo-600 active:scale-95"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </button>
       )}
     </div>
   );

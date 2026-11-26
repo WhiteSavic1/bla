@@ -11,6 +11,8 @@ import {
   LifeBuoy,
   Undo2,
   Redo2,
+  Search,
+  Download,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useTextHistory } from "@/hooks/useTextHistory";
@@ -40,6 +42,7 @@ export function PrivateNotesView({
   const [lockError, setLockError] = useState(false);
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [ticketReason, setTicketReason] = useState("");
+  const [noteQuery, setNoteQuery] = useState("");
 
   const [title, setTitle] = useState("");
   const {
@@ -57,6 +60,35 @@ export function PrivateNotesView({
   );
 
   const filteredNotes = privateNotes.filter((n) => n.section === section);
+  const searchedNotes = noteQuery.trim()
+    ? filteredNotes.filter((n) => {
+        const q = noteQuery.trim().toLocaleLowerCase("tr-TR");
+        return (
+          n.title.toLocaleLowerCase("tr-TR").includes(q) ||
+          n.content.toLocaleLowerCase("tr-TR").includes(q)
+        );
+      })
+    : filteredNotes;
+
+  const handleExportNotes = () => {
+    if (filteredNotes.length === 0) return;
+    const header =
+      section === "JOURNAL" ? "# Günlüğüm Yedeği\n\n" : "# Düşüncelerim Yedeği\n\n";
+    const body = filteredNotes
+      .map(
+        (n) =>
+          `## ${n.title}\n_${n.createdAt}_\n\n${n.content}\n\n---\n`
+      )
+      .join("\n");
+    const blob = new Blob([header + body], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download =
+      section === "JOURNAL" ? "gunlugum-yedek.md" : "dusuncelerim-yedek.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +248,17 @@ export function PrivateNotesView({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {filteredNotes.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportNotes}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/25 transition"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Yedek İndir (.md)</span>
+            </button>
+          )}
           {journalLock.type === "NONE" && (
             <button
               onClick={() => setActiveSection("SETTINGS")}
@@ -315,8 +357,26 @@ export function PrivateNotesView({
       </form>
 
       {/* Kayıtlı Özel Notlar */}
+      {filteredNotes.length > 0 && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={noteQuery}
+            onChange={(e) => setNoteQuery(e.target.value)}
+            placeholder="Notlarında ara..."
+            className="w-full rounded-xl border border-white/10 bg-[#151821]/90 pl-10 pr-4 py-2 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+      )}
+
       <div className="space-y-3">
-        {filteredNotes.map((note) => (
+        {searchedNotes.length === 0 && filteredNotes.length > 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-[#151821]/70 p-6 text-center text-xs text-gray-400">
+            Aramanla eşleşen not bulunamadı.
+          </div>
+        ) : (
+          searchedNotes.map((note) => (
           <div
             key={note.id}
             className="rounded-2xl border border-white/10 bg-[#151821]/80 p-5"
@@ -345,7 +405,8 @@ export function PrivateNotesView({
               {note.content}
             </p>
           </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
