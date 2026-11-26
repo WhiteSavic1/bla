@@ -301,6 +301,7 @@ interface AppContextValue {
   addPlaylistToRoomQueue: (tracks: TrackInfo[]) => void;
   moveRoomQueueTrack: (index: number, direction: -1 | 1) => void;
   removeRoomQueueTrack: (index: number) => void;
+  clearRoomQueue: () => void;
   restartRoomTrack: () => void;
   seekRoomTrack: (seconds: number) => void;
   toggleRoomPlay: (currentSec?: number) => void;
@@ -3518,6 +3519,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
+  const clearRoomQueue = () => {
+    updateRoomAndSync((prev) => ({
+      ...prev,
+      queue: [],
+    }));
+    showToast("Dinleme sırası temizlendi.");
+  };
+
   const playTrackInRoom = (track: TrackInfo) => {
     stopGlobalTrack();
     stopProfileAudio();
@@ -3928,6 +3937,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addPlaylistToRoomQueue,
         moveRoomQueueTrack,
         removeRoomQueueTrack,
+        clearRoomQueue,
         restartRoomTrack,
         seekRoomTrack,
         toggleRoomPlay,

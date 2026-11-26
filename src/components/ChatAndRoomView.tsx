@@ -29,6 +29,7 @@ import {
   ListOrdered,
   Shuffle,
   MousePointerClick,
+  AlignLeft,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import {
@@ -86,6 +87,7 @@ export function ChatAndRoomView() {
     addPlaylistToRoomQueue,
     moveRoomQueueTrack,
     removeRoomQueueTrack,
+    clearRoomQueue,
     restartRoomTrack,
     seekRoomTrack,
     toggleRoomPlay,
@@ -133,10 +135,73 @@ export function ChatAndRoomView() {
   const roomDuration = roomDurationSec;
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsData, setLyricsData] = useState<{
+    trackId: string;
+    synced: { timeSec: number; text: string }[];
+    plain: string | null;
+  } | null>(null);
+  const activeLyricRef = useRef<HTMLButtonElement | null>(null);
   const [localCallNotices, setLocalCallNotices] = useState<
     { id: string; convId: string; text: string; createdAt: string }[]
   >([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const trk = listeningRoom.currentTrack;
+    if (!showLyrics || !trk) return;
+    if (lyricsData?.trackId === trk.id) return;
+    let cancelled = false;
+    setLyricsLoading(true);
+    fetch(
+      `/api/lyrics?title=${encodeURIComponent(trk.title)}&artist=${encodeURIComponent(
+        trk.artist || ""
+      )}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setLyricsData({
+          trackId: trk.id,
+          synced: Array.isArray(data?.synced) ? data.synced : [],
+          plain: typeof data?.plain === "string" ? data.plain : null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLyricsData({ trackId: trk.id, synced: [], plain: null });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLyricsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showLyrics, listeningRoom.currentTrack?.id, listeningRoom.currentTrack?.title, listeningRoom.currentTrack?.artist, lyricsData?.trackId]);
+
+  const activeSyncedIdx = React.useMemo(() => {
+    if (!lyricsData || lyricsData.synced.length === 0) return -1;
+    let idx = -1;
+    for (let i = 0; i < lyricsData.synced.length; i++) {
+      if (lyricsData.synced[i].timeSec <= roomTime + 0.4) {
+        idx = i;
+      } else {
+        break;
+      }
+    }
+    return idx;
+  }, [lyricsData, roomTime]);
+
+  useEffect(() => {
+    if (showLyrics && activeLyricRef.current) {
+      activeLyricRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeSyncedIdx, showLyrics]);
 
   useEffect(() => {
     const loadNotices = () => {
@@ -1657,9 +1722,20 @@ export function ChatAndRoomView() {
         <div
           className={`${
             mobileTab === "ROOM" ? "flex" : "hidden"
-          } md:flex md:col-span-4 flex-col rounded-2xl border border-emerald-500/25 bg-[#12191C]/95 p-4 space-y-3 h-full min-h-0 overflow-y-auto`}
+          } md:flex md:col-span-4 relative flex-col rounded-2xl border border-emerald-500/25 bg-[#12191C]/95 p-4 space-y-3 h-full min-h-0 overflow-y-auto`}
         >
-          <div className="flex items-start justify-between gap-2 border-b border-emerald-500/20 pb-3">
+          {listeningRoom.currentTrack?.artworkUrl && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-32 opacity-20 blur-2xl"
+              style={{
+                backgroundImage: `url(${listeningRoom.currentTrack.artworkUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            />
+          )}
+          <div className="relative flex items-start justify-between gap-2 border-b border-emerald-500/20 pb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               {listeningRoom.currentTrack?.artworkUrl ? (
                 <img
@@ -1673,18 +1749,28 @@ export function ChatAndRoomView() {
                 </div>
               )}
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 truncate">
-                  Dinleme Odası
-                  {(() => {
-                    const rcId = listeningRoom.conversationId || activeConv?.id;
-                    const rc = conversations.find((c) => c.id === rcId);
-                    if (!rc) return "";
-                    const label = rc.isGroup
-                      ? rc.groupName || "Grup"
-                      : users.find((u) => u.id === getOtherPeerId(rc))?.nickname || "Sohbet";
-                    return ` · ${label}`;
-                  })()}{" "}
-                  · {(listeningRoom.participantIds || []).length} kişi
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400 truncate">
+                  {listeningRoom.isPlaying && listeningRoom.currentTrack && (
+                    <span className="inline-flex h-3 items-end gap-0.5 shrink-0">
+                      <span className="w-0.5 h-full origin-bottom rounded-full bg-emerald-400 animate-eq-1" />
+                      <span className="w-0.5 h-full origin-bottom rounded-full bg-emerald-400 animate-eq-2" />
+                      <span className="w-0.5 h-full origin-bottom rounded-full bg-emerald-400 animate-eq-3" />
+                      <span className="w-0.5 h-full origin-bottom rounded-full bg-emerald-400 animate-eq-4" />
+                    </span>
+                  )}
+                  <span className="truncate">
+                    Dinleme Odası
+                    {(() => {
+                      const rcId = listeningRoom.conversationId || activeConv?.id;
+                      const rc = conversations.find((c) => c.id === rcId);
+                      if (!rc) return "";
+                      const label = rc.isGroup
+                        ? rc.groupName || "Grup"
+                        : users.find((u) => u.id === getOtherPeerId(rc))?.nickname || "Sohbet";
+                      return ` · ${label}`;
+                    })()}{" "}
+                    · {(listeningRoom.participantIds || []).length} kişi
+                  </span>
                 </div>
                 <div className="truncate text-sm font-semibold text-white">
                   {listeningRoom.currentTrack?.title || "Şarkı seçilmedi"}
@@ -1879,6 +1965,69 @@ export function ChatAndRoomView() {
             </div>
 
             {/* Tüm şarkılar (Spotify dahil) ListeningRoomAudioHost üzerinden kesintisiz çalar */}
+            {listeningRoom.currentTrack && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLyrics((prev) => !prev)}
+                  className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-medium transition ${
+                    showLyrics
+                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                      : "border-white/10 bg-[#0F1115]/60 text-gray-300 hover:bg-white/5"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <AlignLeft className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Şarkı Sözleri (Lyrics)</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    {showLyrics ? "Gizle" : "Göster"}
+                  </span>
+                </button>
+
+                {showLyrics && (
+                  <div className="max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-[#0F1115]/85 p-3 space-y-1.5">
+                    {lyricsLoading ? (
+                      <div className="py-4 text-center text-[11px] text-gray-400">
+                        Şarkı sözleri aranıyor...
+                      </div>
+                    ) : lyricsData &&
+                      lyricsData.trackId === listeningRoom.currentTrack.id &&
+                      lyricsData.synced.length > 0 ? (
+                      lyricsData.synced.map((line, i) => {
+                        const isActive = i === activeSyncedIdx;
+                        return (
+                          <button
+                            key={`${i}_${line.timeSec}`}
+                            ref={isActive ? activeLyricRef : undefined}
+                            type="button"
+                            onClick={() => seekRoomTrack(Math.floor(line.timeSec))}
+                            title="Bu satıra sar"
+                            className={`block w-full rounded-lg px-2 py-1 text-left text-xs transition ${
+                              isActive
+                                ? "bg-emerald-500/20 font-semibold text-emerald-300"
+                                : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+                            }`}
+                          >
+                            {line.text}
+                          </button>
+                        );
+                      })
+                    ) : lyricsData &&
+                      lyricsData.trackId === listeningRoom.currentTrack.id &&
+                      lyricsData.plain ? (
+                      <div className="whitespace-pre-line text-xs leading-relaxed text-gray-300">
+                        {lyricsData.plain}
+                      </div>
+                    ) : (
+                      <div className="py-3 text-center text-[11px] text-gray-500">
+                        Bu şarkı için söz bulunamadı.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Gerçek Şarkı Sıraya Ekleme & Müzik Listesi Sıraya Ekleme */}
             {isJoinedRoom && listeningRoom.allowCollaborativeQueue && (
@@ -2014,9 +2163,20 @@ export function ChatAndRoomView() {
 
             {/* Sıradakiler (Seçerek Çal + Sıra Değiştir + Kaldır) */}
             <div className="flex-1 min-h-0 flex flex-col space-y-1.5">
-              <span className="text-[11px] font-medium text-gray-400">
-                Sıradakiler ({listeningRoom.queue.length}) — Çalmak için tıkla
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-gray-400">
+                  Sıradakiler ({listeningRoom.queue.length}) — Çalmak için tıkla
+                </span>
+                {isJoinedRoom && listeningRoom.queue.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearRoomQueue}
+                    className="text-[10px] font-medium text-rose-300 hover:text-rose-200 hover:underline"
+                  >
+                    Sırayı Temizle
+                  </button>
+                )}
+              </div>
               {listeningRoom.queue.length === 0 ? (
                 <span className="text-[11px] text-gray-500">Sıra boş</span>
               ) : (

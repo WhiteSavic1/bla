@@ -14,6 +14,29 @@ textarea {
   touch-action: manipulation;
 }
 
+@keyframes eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-eq-1 {
+  animation: eq-bar 0.75s ease-in-out infinite;
+}
+.animate-eq-2 {
+  animation: eq-bar 0.55s ease-in-out 0.15s infinite;
+}
+.animate-eq-3 {
+  animation: eq-bar 0.85s ease-in-out 0.3s infinite;
+}
+.animate-eq-4 {
+  animation: eq-bar 0.65s ease-in-out 0.1s infinite;
+}
+
 @theme inline {
   --font-sans: var(--font-inter), sans-serif;
   --font-serif-literary: var(--font-lora), serif;
