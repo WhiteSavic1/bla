@@ -149,61 +149,6 @@ export function ChatAndRoomView() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const trk = listeningRoom.currentTrack;
-    if (!showLyrics || !trk) return;
-    if (lyricsData?.trackId === trk.id) return;
-    let cancelled = false;
-    setLyricsLoading(true);
-    fetch(
-      `/api/lyrics?title=${encodeURIComponent(trk.title)}&artist=${encodeURIComponent(
-        trk.artist || ""
-      )}`
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        setLyricsData({
-          trackId: trk.id,
-          synced: Array.isArray(data?.synced) ? data.synced : [],
-          plain: typeof data?.plain === "string" ? data.plain : null,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLyricsData({ trackId: trk.id, synced: [], plain: null });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLyricsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showLyrics, listeningRoom.currentTrack?.id, listeningRoom.currentTrack?.title, listeningRoom.currentTrack?.artist, lyricsData?.trackId]);
-
-  const activeSyncedIdx = React.useMemo(() => {
-    if (!lyricsData || lyricsData.synced.length === 0) return -1;
-    let idx = -1;
-    for (let i = 0; i < lyricsData.synced.length; i++) {
-      if (lyricsData.synced[i].timeSec <= roomTime + 0.4) {
-        idx = i;
-      } else {
-        break;
-      }
-    }
-    return idx;
-  }, [lyricsData, roomTime]);
-
-  useEffect(() => {
-    if (showLyrics && activeLyricRef.current) {
-      activeLyricRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  }, [activeSyncedIdx, showLyrics]);
-
-  useEffect(() => {
     const loadNotices = () => {
       try {
         const raw = localStorage.getItem(
@@ -350,6 +295,61 @@ export function ChatAndRoomView() {
     roomClockOffsetMs,
     roomDuration,
   ]);
+
+  useEffect(() => {
+    const trk = listeningRoom.currentTrack;
+    if (!showLyrics || !trk) return;
+    if (lyricsData?.trackId === trk.id) return;
+    let cancelled = false;
+    setLyricsLoading(true);
+    fetch(
+      `/api/lyrics?title=${encodeURIComponent(trk.title)}&artist=${encodeURIComponent(
+        trk.artist || ""
+      )}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setLyricsData({
+          trackId: trk.id,
+          synced: Array.isArray(data?.synced) ? data.synced : [],
+          plain: typeof data?.plain === "string" ? data.plain : null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLyricsData({ trackId: trk.id, synced: [], plain: null });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLyricsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showLyrics, listeningRoom.currentTrack?.id, listeningRoom.currentTrack?.title, listeningRoom.currentTrack?.artist, lyricsData?.trackId]);
+
+  const activeSyncedIdx = React.useMemo(() => {
+    if (!lyricsData || lyricsData.synced.length === 0) return -1;
+    let idx = -1;
+    for (let i = 0; i < lyricsData.synced.length; i++) {
+      if (lyricsData.synced[i].timeSec <= roomTime + 0.4) {
+        idx = i;
+      } else {
+        break;
+      }
+    }
+    return idx;
+  }, [lyricsData, roomTime]);
+
+  useEffect(() => {
+    if (showLyrics && activeLyricRef.current) {
+      activeLyricRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeSyncedIdx, showLyrics]);
 
   const prevConvIdRef = useRef<string | undefined>(undefined);
   const [openEmojiMsgId, setOpenEmojiMsgId] = useState<string | null>(null);
