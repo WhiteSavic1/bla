@@ -35,6 +35,7 @@ export function ListeningRoomAudioHost() {
     prevRoomTrack,
     skipRoomTrack,
     leaveListeningRoom,
+    muteUiSounds,
   } = useApp();
 
   const roomAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -141,6 +142,7 @@ export function ListeningRoomAudioHost() {
 
   useEffect(() => {
     if (
+      muteUiSounds ||
       !incomingCall ||
       isViewingIncomingChat ||
       dismissedCallId === incomingCall.callId
@@ -149,7 +151,7 @@ export function ListeningRoomAudioHost() {
     }
     const stop = startRing("incoming");
     return stop;
-  }, [incomingCall, isViewingIncomingChat, dismissedCallId]);
+  }, [muteUiSounds, incomingCall, isViewingIncomingChat, dismissedCallId]);
 
   const skipRoomTrackRef = useRef(skipRoomTrack);
   skipRoomTrackRef.current = skipRoomTrack;

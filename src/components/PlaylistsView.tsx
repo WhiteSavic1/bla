@@ -13,6 +13,12 @@ import {
   ListOrdered,
   Shuffle,
   MousePointerClick,
+  ArrowUp,
+  ArrowDown,
+  Pencil,
+  Check,
+  X,
+  Search,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { TrackInfo } from "@/types/persona";
@@ -29,6 +35,8 @@ export function PlaylistsView() {
     deletePlaylist,
     addTrackToPlaylist,
     removeTrackFromPlaylist,
+    movePlaylistTrack,
+    updatePlaylistInfo,
     toggleLikePlaylist,
     togglePlaylistShare,
     sharePlaylistToFeed,
@@ -48,6 +56,10 @@ export function PlaylistsView() {
   const [isImporting, setIsImporting] = useState(false);
   const [refPlaylistId, setRefPlaylistId] = useState("");
   const [title, setTitle] = useState("");
+  const [trackSearch, setTrackSearch] = useState("");
+  const [editingPlId, setEditingPlId] = useState<string | null>(null);
+  const [editPlTitle, setEditPlTitle] = useState("");
+  const [editPlDesc, setEditPlDesc] = useState("");
   const [description, setDescription] = useState("");
   const [draftTracks, setDraftTracks] = useState<TrackInfo[]>([]);
   const [addingToId, setAddingToId] = useState<string | null>(null);
@@ -308,8 +320,19 @@ export function PlaylistsView() {
 
       {/* Listeler */}
       <div className="space-y-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={trackSearch}
+            onChange={(e) => setTrackSearch(e.target.value)}
+            placeholder="Liste veya şarkı adına göre ara..."
+            className="w-full rounded-xl border border-white/10 bg-[#151821]/90 pl-10 pr-4 py-2 text-xs text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
         {(() => {
-          const visiblePlaylists =
+          const tq = trackSearch.trim().toLocaleLowerCase("tr-TR");
+          const visiblePlaylists = (
             plTab === "MINE"
               ? playlists.filter((p) => p.authorId === currentUser.id)
               : playlists.filter(
@@ -317,7 +340,18 @@ export function PlaylistsView() {
                     p.authorId !== currentUser.id &&
                     friendIds.includes(p.authorId) &&
                     Boolean(p.isShared)
-                );
+                )
+          ).filter((p) => {
+            if (!tq) return true;
+            return (
+              p.title.toLocaleLowerCase("tr-TR").includes(tq) ||
+              p.tracks.some(
+                (t) =>
+                  t.title.toLocaleLowerCase("tr-TR").includes(tq) ||
+                  (t.artist || "").toLocaleLowerCase("tr-TR").includes(tq)
+              )
+            );
+          });
           if (visiblePlaylists.length === 0) {
             return (
               <div className="rounded-2xl border border-white/10 bg-[#151821]/85 p-8 text-center text-xs text-gray-400">
@@ -338,20 +372,81 @@ export function PlaylistsView() {
               className="rounded-2xl border border-white/10 bg-[#151821]/90 p-5 space-y-4 shadow-xl"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">
-                    {pl.title}
-                  </h2>
-                  <button
-                    onClick={() => openProfile(author.id)}
-                    className="text-xs text-indigo-300 hover:underline"
-                  >
-                    {author.nickname} · {pl.createdAt}
-                  </button>
-                  {pl.description && (
-                    <p className="mt-1.5 text-xs text-gray-300">
-                      {pl.description}
-                    </p>
+                <div className="min-w-0 flex-1">
+                  {editingPlId === pl.id ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!editPlTitle.trim()) return;
+                        updatePlaylistInfo(pl.id, editPlTitle, editPlDesc);
+                        setEditingPlId(null);
+                      }}
+                      className="space-y-2 rounded-xl border border-emerald-500/30 bg-[#0F1115] p-3"
+                    >
+                      <input
+                        type="text"
+                        value={editPlTitle}
+                        onChange={(e) => setEditPlTitle(e.target.value)}
+                        placeholder="Liste adı..."
+                        className="w-full rounded-lg border border-white/10 bg-[#151821] px-3 py-1.5 text-xs text-white focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={editPlDesc}
+                        onChange={(e) => setEditPlDesc(e.target.value)}
+                        placeholder="Açıklama..."
+                        className="w-full rounded-lg border border-white/10 bg-[#151821] px-3 py-1.5 text-xs text-white focus:outline-none"
+                      />
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditingPlId(null)}
+                          className="rounded-lg px-2.5 py-1 text-[11px] text-gray-400 hover:text-white"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex items-center gap-1 rounded-lg bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          <span>Kaydet</span>
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold text-white">
+                          {pl.title}
+                        </h2>
+                        {isOwn && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPlId(pl.id);
+                              setEditPlTitle(pl.title);
+                              setEditPlDesc(pl.description || "");
+                            }}
+                            title="Liste Adını/Açıklamasını Düzenle"
+                            className="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-white"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => openProfile(author.id)}
+                        className="text-xs text-indigo-300 hover:underline"
+                      >
+                        {author.nickname} · {pl.createdAt}
+                      </button>
+                      {pl.description && (
+                        <p className="mt-1.5 text-xs text-gray-300">
+                          {pl.description}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -535,21 +630,41 @@ export function PlaylistsView() {
                           <span>Dinle</span>
                         </button>
                         {isOwn && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              requestConfirm({
-                                title: "Şarkıyı Çıkar",
-                                message: `"${t.title}" şarkısını listeden çıkarmak istediğine emin misin?`,
-                                confirmLabel: "Çıkar",
-                                onConfirm: () => removeTrackFromPlaylist(pl.id, t.id),
-                              })
-                            }
-                            title="Şarkıyı Listeden Çıkar"
-                            className="rounded-lg p-1.5 text-gray-500 hover:bg-rose-500/15 hover:text-rose-400 transition"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => movePlaylistTrack(pl.id, idx, -1)}
+                              title="Yukarı Taşı"
+                              className="rounded p-1 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-25"
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === pl.tracks.length - 1}
+                              onClick={() => movePlaylistTrack(pl.id, idx, 1)}
+                              title="Aşağı Taşı"
+                              className="rounded p-1 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-25"
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                requestConfirm({
+                                  title: "Şarkıyı Çıkar",
+                                  message: `"${t.title}" şarkısını listeden çıkarmak istediğine emin misin?`,
+                                  confirmLabel: "Çıkar",
+                                  onConfirm: () => removeTrackFromPlaylist(pl.id, t.id),
+                                })
+                              }
+                              title="Şarkıyı Listeden Çıkar"
+                              className="rounded-lg p-1.5 text-gray-500 hover:bg-rose-500/15 hover:text-rose-400 transition"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>

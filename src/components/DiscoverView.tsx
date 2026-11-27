@@ -43,18 +43,32 @@ export function DiscoverView({
   } = useApp();
 
   const [query, setQuery] = useState("");
+  const [onlyOnline, setOnlyOnline] = useState(false);
 
   const others = users.filter((u) => u.id !== currentUser.id);
   const myFriends = others.filter((u) => friendIds.includes(u.id));
+  const onlineFriendsCount = myFriends.filter((u) =>
+    onlineUserIds.includes(u.id)
+  ).length;
   const discoverableUsers = others.filter((u) => !friendIds.includes(u.id));
   const baseList = mode === "FRIENDS" ? myFriends : discoverableUsers;
-  const filteredUsers = query.trim()
-    ? baseList.filter(
-        (u) =>
-          u.nickname.toLowerCase().includes(query.trim().toLowerCase()) ||
-          u.username.toLowerCase().includes(query.trim().toLowerCase())
-      )
-    : baseList;
+  const onlineScoped =
+    mode === "FRIENDS" && onlyOnline
+      ? baseList.filter((u) => onlineUserIds.includes(u.id))
+      : baseList;
+  const filteredUsers = (
+    query.trim()
+      ? onlineScoped.filter(
+          (u) =>
+            u.nickname.toLowerCase().includes(query.trim().toLowerCase()) ||
+            u.username.toLowerCase().includes(query.trim().toLowerCase())
+        )
+      : onlineScoped
+  ).sort((a, b) => {
+    const ao = onlineUserIds.includes(a.id) ? 1 : 0;
+    const bo = onlineUserIds.includes(b.id) ? 1 : 0;
+    return bo - ao;
+  });
   const incomingRequests = friendRequests.filter(
     (r) => r.toUserId === currentUser.id && r.status === "PENDING"
   );
@@ -74,15 +88,31 @@ export function DiscoverView({
         </p>
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="İsim veya @kullanıcı adı ile ara..."
-          className="w-full rounded-xl border border-white/10 bg-[#151821]/90 pl-10 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="İsim veya @kullanıcı adı ile ara..."
+            className="w-full rounded-xl border border-white/10 bg-[#151821]/90 pl-10 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+        {mode === "FRIENDS" && (
+          <button
+            type="button"
+            onClick={() => setOnlyOnline((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-medium transition shrink-0 ${
+              onlyOnline
+                ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200"
+                : "border-white/10 bg-[#151821]/90 text-gray-300 hover:bg-white/5"
+            }`}
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span>Çevrimiçi ({onlineFriendsCount})</span>
+          </button>
+        )}
       </div>
 
       {/* Gelen Arkadaşlık İstekleri */}
@@ -170,10 +200,10 @@ export function DiscoverView({
                           {user.nickname}
                         </span>
                         {onlineUserIds.includes(user.id) && (
-                          <span
-                            title="Çevrimiçi"
-                            className="h-2 w-2 rounded-full bg-emerald-400 shrink-0"
-                          />
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Çevrimiçi
+                          </span>
                         )}
                       </div>
                       <div className="text-xs text-gray-400">

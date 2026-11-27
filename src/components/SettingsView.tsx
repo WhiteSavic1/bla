@@ -52,6 +52,10 @@ export function SettingsView() {
     setThemeMode,
     showCloseFriendHighlights,
     setShowCloseFriendHighlights,
+    hideOnlineStatus,
+    setHideOnlineStatus,
+    muteUiSounds,
+    setMuteUiSounds,
   } = useApp();
 
   const [tab, setTab] = useState<
@@ -834,9 +838,43 @@ export function SettingsView() {
         </form>
       )}
 
-      {/* 4. Günlük & Düşüncelerim Kilidi (Şifre / Desen / İkisi + Eski Şifre Doğrulama + Destek Ticket) */}
+      {/* 4. Günlük & Düşüncelerim Kilidi + Gizlilik Tercihleri */}
       {tab === "SECURITY" && (
         <div className="space-y-6">
+          <div className="rounded-2xl border border-white/10 bg-[#151821]/90 p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-white">
+              Gizlilik & Ses Tercihleri
+            </h2>
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0F1115] px-4 py-3 text-xs cursor-pointer">
+              <div>
+                <div className="font-medium text-white">Çevrimiçi Durumumu Gizle</div>
+                <div className="text-[11px] text-gray-400">
+                  Açıkken diğer kullanıcılar seni aktif/çevrimiçi olarak görmez.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={hideOnlineStatus}
+                onChange={(e) => setHideOnlineStatus(e.target.checked)}
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0F1115] px-4 py-3 text-xs cursor-pointer">
+              <div>
+                <div className="font-medium text-white">Arayüz & Bildirim Seslerini Sustur</div>
+                <div className="text-[11px] text-gray-400">
+                  Bildirim ve ek arayüz uyarı seslerini sessize alır.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={muteUiSounds}
+                onChange={(e) => setMuteUiSounds(e.target.checked)}
+                className="h-4 w-4 accent-indigo-500"
+              />
+            </label>
+          </div>
+
           <form
             onSubmit={handleSaveSecurity}
             className="rounded-2xl border border-white/10 bg-[#151821]/90 p-6 space-y-5"

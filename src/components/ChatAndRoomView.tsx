@@ -31,6 +31,8 @@ import {
   MousePointerClick,
   AlignLeft,
   Pin,
+  BookmarkPlus,
+  History,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import {
@@ -100,11 +102,13 @@ export function ChatAndRoomView() {
     roomPlayMode,
     setRoomPlayMode,
     playlists,
+    addTrackToPlaylist,
     volume,
     setVolume,
     showToast,
     requestConfirm,
     startVoiceCall,
+    onlineUserIds,
   } = useApp();
 
   const [msgText, setMsgText] = useState("");
@@ -138,6 +142,8 @@ export function ChatAndRoomView() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
   const [showLyrics, setShowLyrics] = useState(false);
+  const [showRoomHistory, setShowRoomHistory] = useState(false);
+  const [showAddToPlPicker, setShowAddToPlPicker] = useState(false);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsData, setLyricsData] = useState<{
     trackId: string;
@@ -218,6 +224,8 @@ export function ChatAndRoomView() {
     { id: string; convId: string; text: string; createdAt: string }[]
   >([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   useEffect(() => {
     const loadNotices = () => {
@@ -911,15 +919,25 @@ export function ChatAndRoomView() {
                             <Users className="h-4 w-4" />
                           </div>
                         )
-                      ) : p?.avatarUrl ? (
-                        <img
-                          src={p.avatarUrl}
-                          alt={p.nickname}
-                          className="h-9 w-9 rounded-full object-cover shrink-0"
-                        />
                       ) : (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300">
-                          {p!.nickname.slice(0, 2).toUpperCase()}
+                        <div className="relative shrink-0">
+                          {p?.avatarUrl ? (
+                            <img
+                              src={p.avatarUrl}
+                              alt={p.nickname}
+                              className="h-9 w-9 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300">
+                              {p!.nickname.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          {p && onlineUserIds.includes(p.id) && (
+                            <span
+                              title="Çevrimiçi"
+                              className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-[#151821]"
+                            />
+                          )}
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
@@ -1166,7 +1184,16 @@ export function ChatAndRoomView() {
                 )}
 
               {/* Mesaj Akışı (WhatsApp tarzı ardışık birleştirme) */}
-              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              <div className="relative flex-1 min-h-0 flex flex-col">
+                <div
+                  ref={messagesContainerRef}
+                  onScroll={(e) => {
+                    const el = e.currentTarget;
+                    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+                    setShowScrollToBottom(dist > 160);
+                  }}
+                  className="flex-1 min-h-0 overflow-y-auto p-4"
+                >
                 {activeConv.messages
                   .filter((m) => !blockedUserIds.includes(m.senderId))
                   .map((m, idx, filteredMsgs) => {
@@ -1572,6 +1599,19 @@ export function ChatAndRoomView() {
                     </div>
                   ))}
                 <div ref={messagesEndRef} />
+                </div>
+                {showScrollToBottom && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+                    }
+                    className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-full border border-indigo-500/40 bg-[#151821]/95 px-3 py-1.5 text-[11px] font-medium text-indigo-200 shadow-lg backdrop-blur-md hover:bg-indigo-600 hover:text-white transition"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                    <span>Aşağı İn</span>
+                  </button>
+                )}
               </div>
 
               {/* Yazıyor... Göstergesi */}
@@ -2117,23 +2157,105 @@ export function ChatAndRoomView() {
             {/* Tüm şarkılar (Spotify dahil) ListeningRoomAudioHost üzerinden kesintisiz çalar */}
             {listeningRoom.currentTrack && (
               <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setShowLyrics((prev) => !prev)}
-                  className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-medium transition ${
-                    showLyrics
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
-                      : "border-white/10 bg-[#0F1115]/60 text-gray-300 hover:bg-white/5"
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <AlignLeft className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Şarkı Sözleri (Lyrics)</span>
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    {showLyrics ? "Gizle" : "Göster"}
-                  </span>
-                </button>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowLyrics((prev) => !prev)}
+                    className={`flex flex-1 min-w-[120px] items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-medium transition ${
+                      showLyrics
+                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                        : "border-white/10 bg-[#0F1115]/60 text-gray-300 hover:bg-white/5"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <AlignLeft className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Sözler</span>
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      {showLyrics ? "Gizle" : "Aç"}
+                    </span>
+                  </button>
+
+                  {playlists.some((p) => p.authorId === currentUser.id) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddToPlPicker((v) => !v)}
+                      title="Çalan Şarkıyı Müzik Listeme Ekle"
+                      className={`flex items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] font-medium transition ${
+                        showAddToPlPicker
+                          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                          : "border-white/10 bg-[#0F1115]/60 text-gray-300 hover:bg-white/5"
+                      }`}
+                    >
+                      <BookmarkPlus className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Listeme Ekle</span>
+                    </button>
+                  )}
+
+                  {(listeningRoom.history || []).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRoomHistory((v) => !v)}
+                      title="Son Çalınan Şarkılar"
+                      className={`flex items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] font-medium transition ${
+                        showRoomHistory
+                          ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-200"
+                          : "border-white/10 bg-[#0F1115]/60 text-gray-300 hover:bg-white/5"
+                      }`}
+                    >
+                      <History className="h-3.5 w-3.5 text-indigo-300" />
+                      <span>Geçmiş ({(listeningRoom.history || []).length})</span>
+                    </button>
+                  )}
+                </div>
+
+                {showAddToPlPicker && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-[#0F1115]/90 p-2.5 space-y-1.5">
+                    <div className="text-[10px] font-semibold text-emerald-300">
+                      Hangi listene eklensin?
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {playlists
+                        .filter((p) => p.authorId === currentUser.id)
+                        .map((pl) => (
+                          <button
+                            key={pl.id}
+                            type="button"
+                            onClick={() => {
+                              if (listeningRoom.currentTrack) {
+                                addTrackToPlaylist(pl.id, listeningRoom.currentTrack);
+                                setShowAddToPlPicker(false);
+                              }
+                            }}
+                            className="rounded-lg bg-white/10 px-2.5 py-1 text-[11px] text-white hover:bg-emerald-500 hover:text-black transition"
+                          >
+                            + {pl.title}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {showRoomHistory && (listeningRoom.history || []).length > 0 && (
+                  <div className="max-h-36 overflow-y-auto rounded-xl border border-white/10 bg-[#0F1115]/85 p-2 space-y-1">
+                    <div className="px-1 text-[10px] font-semibold text-gray-400">
+                      Son Çalınanlar
+                    </div>
+                    {[...(listeningRoom.history || [])].reverse().map((h, i) => (
+                      <button
+                        key={`${h.id}_${i}`}
+                        type="button"
+                        onClick={() => playTrackInRoom(h)}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-[11px] text-gray-300 hover:bg-white/10"
+                      >
+                        <span className="truncate">
+                          {h.title} {h.artist ? `— ${h.artist}` : ""}
+                        </span>
+                        <Play className="h-3 w-3 shrink-0 text-emerald-400" />
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {showLyrics && (
                   <div className="max-h-48 overflow-y-auto rounded-xl border border-white/10 bg-[#0F1115]/85 p-3 space-y-1.5">

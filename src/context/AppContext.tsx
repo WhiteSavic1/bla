@@ -204,6 +204,10 @@ interface AppContextValue {
   removeHighlight: (postId: string, highlightId: string) => void;
   showCloseFriendHighlights: boolean;
   setShowCloseFriendHighlights: (show: boolean) => void;
+  hideOnlineStatus: boolean;
+  setHideOnlineStatus: (hide: boolean) => void;
+  muteUiSounds: boolean;
+  setMuteUiSounds: (mute: boolean) => void;
   repostPost: (originalPostId: string, editedContent: string) => void;
   undoRepost: (originalPostId: string) => void;
 
@@ -251,6 +255,16 @@ interface AppContextValue {
   deletePlaylist: (playlistId: string) => void;
   addTrackToPlaylist: (playlistId: string, track: TrackInfo) => void;
   removeTrackFromPlaylist: (playlistId: string, trackId: string) => void;
+  movePlaylistTrack: (
+    playlistId: string,
+    index: number,
+    direction: -1 | 1
+  ) => void;
+  updatePlaylistInfo: (
+    playlistId: string,
+    title: string,
+    description: string
+  ) => void;
   toggleLikePlaylist: (playlistId: string) => void;
   togglePlaylistShare: (playlistId: string) => void;
   sharePlaylistToFeed: (playlistId: string) => void;
@@ -615,6 +629,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setShowCloseFriendHighlightsState(show);
     try {
       localStorage.setItem("satir_arasi_show_cf_highlights_v1", String(show));
+    } catch {
+      // ignore
+    }
+  };
+
+  const [hideOnlineStatus, setHideOnlineStatusState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("satir_arasi_hide_online_v1") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setHideOnlineStatus = (hide: boolean) => {
+    setHideOnlineStatusState(hide);
+    try {
+      localStorage.setItem("satir_arasi_hide_online_v1", String(hide));
+    } catch {
+      // ignore
+    }
+  };
+
+  const [muteUiSounds, setMuteUiSoundsState] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("satir_arasi_mute_ui_sounds_v1") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setMuteUiSounds = (mute: boolean) => {
+    setMuteUiSoundsState(mute);
+    try {
+      localStorage.setItem("satir_arasi_mute_ui_sounds_v1", String(mute));
     } catch {
       // ignore
     }
@@ -2261,7 +2309,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       status: "PENDING",
       createdAt: "Az önce",
     };
-    setFriendRequests((prev) => [req, ...prev]);
+    setFriendRequests((prev) => {
+      const next = [req, ...prev];
+      const apiBase = activeApiUrl || fallbackApiUrl || "";
+      fetch(`${apiBase}/api/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendRequests: next }),
+      }).catch(() => {});
+      return next;
+    });
     const target = users.find((u) => u.id === userId);
     setNotifications((prev) => [
       {
@@ -2339,9 +2396,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!req) return;
     const otherId =
       req.fromUserId === currentUser.id ? req.toUserId : req.fromUserId;
-    setFriendRequests((prev) =>
-      prev.map((r) => (r.id === requestId ? { ...r, status: "ACCEPTED" } : r))
-    );
+    setFriendRequests((prev) => {
+      const next = prev.map((r) =>
+        r.id === requestId ? { ...r, status: "ACCEPTED" as const } : r
+      );
+      const apiBase = activeApiUrl || fallbackApiUrl || "";
+      fetch(`${apiBase}/api/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendRequests: next }),
+      }).catch(() => {});
+      return next;
+    });
     setFriendIds((prev) => (prev.includes(otherId) ? prev : [...prev, otherId]));
     // Arkadaş olunca aralarındaki bekleyen sohbet de sınırsız (ACTIVE) olur
     setConversations((prev) =>
@@ -2458,16 +2524,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    if (!currentUser.id || currentUser.id === "u_me") return;
     let active = true;
     const ping = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
+      const base = activeApiUrl || fallbackApiUrl || "";
       try {
-        const res = await fetch(`${activeApiUrl || fallbackApiUrl || ""}/api/presence`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: currentUser.id }),
-        });
+        const res =
+          currentUser.id && currentUser.id !== "u_me" && !hideOnlineStatus
+            ? await fetch(`${base}/api/presence`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: currentUser.id }),
+              })
+            : await fetch(`${base}/api/presence`, { cache: "no-store" });
         if (!res.ok || !active) return;
         const data = (await res.json()) as { onlineUserIds?: string[] };
         if (Array.isArray(data.onlineUserIds)) {
@@ -2478,12 +2547,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     };
     ping();
-    const t = setInterval(ping, 20_000);
+    const t = setInterval(ping, 15_000);
     return () => {
       active = false;
       clearInterval(t);
     };
-  }, [currentUser.id, activeApiUrl, fallbackApiUrl]);
+  }, [currentUser.id, activeApiUrl, fallbackApiUrl, hideOnlineStatus]);
 
   const createPost = (
     post: Omit<
@@ -2848,6 +2917,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       )
     );
     showToast("Şarkı listeden çıkarıldı.");
+  };
+
+  const movePlaylistTrack = (
+    playlistId: string,
+    index: number,
+    direction: -1 | 1
+  ) => {
+    setPlaylists((prev) =>
+      prev.map((p) => {
+        if (p.id !== playlistId || p.authorId !== currentUser.id) return p;
+        const target = index + direction;
+        if (target < 0 || target >= p.tracks.length) return p;
+        const nextTracks = [...p.tracks];
+        const tmp = nextTracks[index];
+        nextTracks[index] = nextTracks[target];
+        nextTracks[target] = tmp;
+        return { ...p, tracks: nextTracks };
+      })
+    );
+  };
+
+  const updatePlaylistInfo = (
+    playlistId: string,
+    title: string,
+    description: string
+  ) => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return;
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id === playlistId && p.authorId === currentUser.id
+          ? { ...p, title: cleanTitle, description: description.trim() }
+          : p
+      )
+    );
+    showToast("Müzik listesi güncellendi.");
   };
 
   const togglePlaylistShare = (playlistId: string) => {
@@ -3966,6 +4071,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         removeHighlight,
         showCloseFriendHighlights,
         setShowCloseFriendHighlights,
+        hideOnlineStatus,
+        setHideOnlineStatus,
+        muteUiSounds,
+        setMuteUiSounds,
         repostPost,
         undoRepost,
         apiBaseUrl: activeApiUrl,
@@ -3992,6 +4101,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deletePlaylist,
         addTrackToPlaylist,
         removeTrackFromPlaylist,
+        movePlaylistTrack,
+        updatePlaylistInfo,
         toggleLikePlaylist,
         togglePlaylistShare,
         sharePlaylistToFeed,

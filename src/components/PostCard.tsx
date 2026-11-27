@@ -19,6 +19,7 @@ import {
   Pencil,
   Maximize2,
   Check,
+  Headphones,
 } from "lucide-react";
 import { FontStyle, HighlightColor, Post, UserProfile } from "@/types/persona";
 import { useApp } from "@/context/AppContext";
@@ -136,6 +137,8 @@ export function PostCard({ post }: { post: Post }) {
     repostPost,
     undoRepost,
     playGlobalTrack,
+    addToRoomQueue,
+    joinedRoomConvId,
     startMessageRequest,
     submitReport,
     deletePost,
@@ -497,13 +500,26 @@ export function PostCard({ post }: { post: Post }) {
             </div>
           </div>
 
-          <button
-            onClick={() => playGlobalTrack(post.attachedTrack!)}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/30"
-          >
-            <Play className="h-3.5 w-3.5 fill-current" />
-            <span>Dinle</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {joinedRoomConvId && (
+              <button
+                type="button"
+                onClick={() => addToRoomQueue(post.attachedTrack!)}
+                title="Dinleme Odası Sırasına Ekle"
+                className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                <Headphones className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Odaya Ekle</span>
+              </button>
+            )}
+            <button
+              onClick={() => playGlobalTrack(post.attachedTrack!)}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/30"
+            >
+              <Play className="h-3.5 w-3.5 fill-current" />
+              <span>Dinle</span>
+            </button>
+          </div>
         </div>
       )}
 
